@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { StarIcon, HeartIcon, ListPlusIcon, ShareIcon, MessageSquareIcon } from 'lucide-react';
 import { Link } from '../components/Link';
+import { ReviewFormModal } from '../components/ReviewFormModal';
 export function Album() {
   const [userRating, setUserRating] = useState<number | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const album = {
     id: 1,
     title: 'The Suffering',
@@ -50,6 +52,18 @@ export function Album() {
       duration: '4:53'
     }]
   };
+  const handleReviewSubmit = (review: {
+    rating: number;
+    title: string;
+    content: string;
+  }) => {
+    // In a real app, this would send the review to an API
+    console.log('Review submitted:', review);
+    // For demo purposes, we'll just update the UI
+    setUserRating(review.rating);
+    // Show a success message or update the UI
+    alert('Your review has been published!');
+  };
   const renderRatingStars = () => {
     return <div className="flex">
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(rating => <button key={rating} onClick={() => setUserRating(rating)} className="p-1">
@@ -90,9 +104,9 @@ export function Album() {
               </div>
               <p className="opacity-70 mb-6">{album.description}</p>
               <div className="flex flex-wrap gap-3">
-                <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors">
+                <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors" onClick={() => setIsReviewModalOpen(true)}>
                   <StarIcon size={18} />
-                  <span>Rate</span>
+                  <span>Rate & Review</span>
                 </button>
                 <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
                   <HeartIcon size={18} />
@@ -131,7 +145,7 @@ export function Album() {
         <div className="mb-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold">Reviews</h2>
-            <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors">
+            <button className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors" onClick={() => setIsReviewModalOpen(true)}>
               <MessageSquareIcon size={18} />
               <span>Write Review</span>
             </button>
@@ -165,5 +179,7 @@ export function Album() {
           </div>
         </div>
       </div>
+      {/* Review Modal */}
+      <ReviewFormModal albumId={album.id} albumTitle={album.title} albumArtist={album.artist} albumCover={album.cover} isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} onSubmit={handleReviewSubmit} />
     </Layout>;
 }
