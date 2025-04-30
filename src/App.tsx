@@ -7,6 +7,7 @@ import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { Search } from './pages/Search';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/PrivateRoute';
 export function App() {
@@ -15,6 +16,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/discover" element={<Discover />} />
+          <Route path="/search" element={<Search />} />
           <Route path="/album/:id" element={<Album />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
