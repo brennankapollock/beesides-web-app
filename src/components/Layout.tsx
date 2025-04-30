@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
-import { MenuIcon, UserIcon } from 'lucide-react';
+import { MenuIcon } from 'lucide-react';
 import { Navigation } from './Navigation';
 import { Link } from './Link';
+import { BottomSheetNavigation } from './BottomSheetNavigation';
+import { AuthButton } from './AuthButton';
+import { useAuth } from '../contexts/AuthContext';
 export function Layout({
   children
 }: {
   children: React.ReactNode;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  // This would typically come from authentication context
-  const currentUser = {
-    username: 'johndoe'
+  const {
+    currentUser
+  } = useAuth();
+  // Use the authenticated user or fallback to a default for components that need it
+  const userForNavigation = currentUser || {
+    username: 'guest'
   };
   return <div className="bg-white text-black min-h-screen font-mono">
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-lg border-b">
@@ -18,10 +24,8 @@ export function Layout({
           <Link to="/" className="text-xl font-bold tracking-tight">
             BEESIDES
           </Link>
-          <div className="flex gap-4">
-            <Link to={`/profile/${currentUser.username}`} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors" aria-label="Your profile">
-              <UserIcon size={18} />
-            </Link>
+          <div className="flex gap-4 items-center">
+            <AuthButton />
             <button className="p-2 rounded-lg bg-gray-900 text-white hover:bg-black transition-colors" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">
               <MenuIcon size={18} />
             </button>
@@ -29,6 +33,7 @@ export function Layout({
         </div>
       </header>
       <main className="relative">{children}</main>
-      <Navigation isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} currentUser={currentUser} />
+      <Navigation isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} currentUser={userForNavigation} />
+      <BottomSheetNavigation currentUser={userForNavigation} />
     </div>;
 }

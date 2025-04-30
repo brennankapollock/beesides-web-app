@@ -1,3 +1,50 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(var(--translate-y));
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(calc(var(--translate-y) - 10px));
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+.transition-bounce {
+  animation: bounce 0.3s;
+  animation-iteration-count: 1;
+}
+.animate-in {
+  animation-duration: 150ms;
+  --tw-enter-opacity: initial;
+  --tw-enter-scale: initial;
+  --tw-enter-rotate: initial;
+  --tw-enter-translate-x: initial;
+  --tw-enter-translate-y: initial;
+}
+.fade-in {
+  opacity: 0;
+  animation-name: fade-in;
+}
+.slide-in-from-bottom-3 {
+  --tw-enter-translate-y: 0.75rem;
+  animation-name: slide-in-from-bottom;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: var(--tw-enter-opacity, 1);
+  }
+}
+@keyframes slide-in-from-bottom {
+  from {
+    transform: translateY(var(--tw-enter-translate-y, 1rem));
+  }
+  to {
+    transform: translateY(0);
+  }
+}

@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { AlbumCard } from '../components/AlbumCard';
+import { AlbumListItem } from '../components/AlbumListItem';
 import { SettingsIcon, EditIcon, ListMusicIcon, StarIcon, BarChart2Icon, UserIcon } from 'lucide-react';
 import { Link } from '../components/Link';
+import { ViewToggle } from '../components/ViewToggle';
+import { useViewMode } from '../hooks/useViewMode';
 export function Profile() {
   const [activeTab, setActiveTab] = useState('collection');
+  const [viewMode, setViewMode] = useViewMode('grid');
   const user = {
     name: 'John Doe',
     username: 'musiclover42',
@@ -25,28 +29,32 @@ export function Profile() {
     artist: 'Emily Bryan',
     cover: 'https://images.unsplash.com/photo-1599719500956-d158a3abd461?q=80&w=2070&auto=format&fit=crop',
     rating: 9.2,
-    genre: 'Classic'
+    genre: 'Classic',
+    releaseDate: '2023'
   }, {
     id: 2,
     title: 'Daily Chaos',
     artist: 'Emily Bryan',
     cover: 'https://images.unsplash.com/photo-1603384164656-2b0e573ffa0b?q=80&w=1974&auto=format&fit=crop',
     rating: 8.7,
-    genre: '90s'
+    genre: '90s',
+    releaseDate: '2022'
   }, {
     id: 3,
     title: 'Simple',
     artist: 'Ryan Parker',
     cover: 'https://images.unsplash.com/photo-1594623930572-300a3011d9ae?q=80&w=2070&auto=format&fit=crop',
     rating: 7.9,
-    genre: 'New'
+    genre: 'New',
+    releaseDate: '2024'
   }, {
     id: 4,
     title: 'Midnight Tales',
     artist: 'Sarah Johnson',
     cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=2069&auto=format&fit=crop',
     rating: 9.5,
-    genre: 'Electronic'
+    genre: 'Electronic',
+    releaseDate: '2023'
   }];
   const lists = [{
     id: 1,
@@ -153,6 +161,7 @@ export function Profile() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold">Collection (42)</h2>
               <div className="flex gap-2">
+                <ViewToggle viewMode={viewMode} onViewChange={setViewMode} />
                 <button className="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
                   Filter
                 </button>
@@ -161,9 +170,9 @@ export function Profile() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className={`transition-all duration-300 ${viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-4 gap-6' : 'space-y-4'}`}>
               {albums.map(album => <Link key={album.id} to={`/album/${album.id}`}>
-                  <AlbumCard album={album} />
+                  {viewMode === 'grid' ? <AlbumCard album={album} /> : <AlbumListItem album={album} />}
                 </Link>)}
             </div>
           </div>}

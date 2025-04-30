@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { AlbumCard } from '../components/AlbumCard';
+import { AlbumListItem } from '../components/AlbumListItem';
 import { GenreTag } from '../components/GenreTag';
 import { SearchIcon, FilterIcon, TrendingUpIcon, ClockIcon } from 'lucide-react';
 import { Link } from '../components/Link';
+import { ViewToggle } from '../components/ViewToggle';
+import { useViewMode } from '../hooks/useViewMode';
 export function Discover() {
   const [activeFilter, setActiveFilter] = useState('trending');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useViewMode('grid');
   const genres = [{
     id: 1,
     name: 'Classic'
@@ -41,56 +45,64 @@ export function Discover() {
     artist: 'Emily Bryan',
     cover: 'https://images.unsplash.com/photo-1599719500956-d158a3abd461?q=80&w=2070&auto=format&fit=crop',
     rating: 9.2,
-    genre: 'Classic'
+    genre: 'Classic',
+    releaseDate: '2023'
   }, {
     id: 2,
     title: 'Daily Chaos',
     artist: 'Emily Bryan',
     cover: 'https://images.unsplash.com/photo-1603384164656-2b0e573ffa0b?q=80&w=1974&auto=format&fit=crop',
     rating: 8.7,
-    genre: '90s'
+    genre: '90s',
+    releaseDate: '2022'
   }, {
     id: 3,
     title: 'Simple',
     artist: 'Ryan Parker',
     cover: 'https://images.unsplash.com/photo-1594623930572-300a3011d9ae?q=80&w=2070&auto=format&fit=crop',
     rating: 7.9,
-    genre: 'New'
+    genre: 'New',
+    releaseDate: '2024'
   }, {
     id: 4,
     title: 'Midnight Tales',
     artist: 'Sarah Johnson',
     cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=2069&auto=format&fit=crop',
     rating: 9.5,
-    genre: 'Electronic'
+    genre: 'Electronic',
+    releaseDate: '2023'
   }, {
     id: 5,
     title: 'Urban Rhythm',
     artist: 'Marcus Lee',
     cover: 'https://images.unsplash.com/photo-1598387846148-47e82ee120cc?q=80&w=1976&auto=format&fit=crop',
     rating: 8.3,
-    genre: 'Hip-Hop'
+    genre: 'Hip-Hop',
+    releaseDate: '2022'
   }, {
     id: 6,
     title: 'Echoes',
     artist: 'Stella Kim',
     cover: 'https://images.unsplash.com/photo-1598518619776-eae3f8a34eac?q=80&w=1974&auto=format&fit=crop',
     rating: 8.9,
-    genre: 'Rock'
+    genre: 'Rock',
+    releaseDate: '2023'
   }, {
     id: 7,
     title: 'Neon Dreams',
     artist: 'Alex Wong',
     cover: 'https://images.unsplash.com/photo-1526327760257-75f515c8eacd?q=80&w=1974&auto=format&fit=crop',
     rating: 7.5,
-    genre: 'Electronic'
+    genre: 'Electronic',
+    releaseDate: '2021'
   }, {
     id: 8,
     title: 'Acoustic Journey',
     artist: 'Laura Martinez',
     cover: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?q=80&w=2070&auto=format&fit=crop',
     rating: 9.1,
-    genre: 'Instrumental'
+    genre: 'Instrumental',
+    releaseDate: '2024'
   }];
   const currentlyPlaying = {
     title: 'The Suffering',
@@ -105,6 +117,7 @@ export function Discover() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl md:text-4xl font-mono font-bold">Discover</h1>
           <div className="flex gap-3">
+            <ViewToggle viewMode={viewMode} onViewChange={setViewMode} />
             <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
               <FilterIcon size={20} />
             </button>
@@ -129,10 +142,10 @@ export function Discover() {
             {genres.map(genre => <GenreTag key={genre.id} name={genre.name} active={activeGenre === genre.name} onClick={() => setActiveGenre(activeGenre === genre.name ? null : genre.name)} />)}
           </div>
         </div>
-        {/* Albums Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {/* Albums Display - Grid or List View */}
+        <div className={`transition-all duration-300 ${viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6' : 'space-y-4'}`}>
           {albums.map(album => <Link key={album.id} to={`/album/${album.id}`}>
-              <AlbumCard album={album} />
+              {viewMode === 'grid' ? <AlbumCard album={album} /> : <AlbumListItem album={album} />}
             </Link>)}
         </div>
       </div>
