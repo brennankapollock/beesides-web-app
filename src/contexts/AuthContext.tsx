@@ -1,5 +1,7 @@
 import React, { useEffect, useState, createContext, useContext } from 'react';
-interface User {
+import { supabase } from '../lib/supabase';
+import { Session, User, AuthError } from '@supabase/supabase-js';
+interface AuthUser {
   id: string;
   name: string;
   username: string;
@@ -7,11 +9,11 @@ interface User {
   avatar?: string | null;
 }
 interface AuthContextType {
-  currentUser: User | null;
+  currentUser: AuthUser | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, username: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,68 +29,138 @@ export function AuthProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  // Check if user is already logged in from localStorage
+  // Check for existing session on load
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        setCurrentUser(JSON.parse(storedUser));
-      } catch (error) {
-        console.error('Error parsing stored user:', error);
-        localStorage.removeItem('user');
+    const fetchSession = async () => {
+      setLoading(true);
+      // Get session from Supabase
+      const {
+        data: {
+          session
+        },
+        error
+      } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Error fetching session:', error);
+        setLoading(false);
+        return;
       }
-    }
-    setLoading(false);
+      if (session) {
+        await fetchUserProfile(session.user);
+      } else {
+        setLoading(false);
+      }
+    };
+    fetchSession();
+    // Set up auth state change listener
+    const {
+      data: {
+        subscription
+      }
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        await fetchUserProfile(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+      }
+    });
+    // Cleanup subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
-  // Mock login function - in a real app, this would call an API
+  // Fetch user profile data from profiles table
+  const fetchUserProfile = async (user: User) => {
+    try {
+      const {
+        data,
+        error
+      } = await supabase.from('profiles').select('name, username, avatar_url').eq('id', user.id).single();
+      if (error) throw error;
+      const userProfile: AuthUser = {
+        id: user.id,
+        email: user.email || '',
+        name: data?.name || '',
+        username: data?.username || '',
+        avatar: data?.avatar_url
+      };
+      setCurrentUser(userProfile);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  // Sign in with email and password
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // For demo purposes, we'll just check against hardcoded credentials
-      if (email === 'johndoe@example.com' && password === 'password123') {
-        const user = {
-          id: '1',
-          name: 'John Doe',
-          username: 'johndoe',
-          email: 'johndoe@example.com',
-          avatar: null
-        };
-        setCurrentUser(user);
-        localStorage.setItem('user', JSON.stringify(user));
-        return;
-      }
-      throw new Error('Invalid credentials');
+      const {
+        data,
+        error
+      } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      if (error) throw error;
+      // User profile is fetched by the auth state change listener
+    } catch (error) {
+      const authError = error as AuthError;
+      console.error('Error signing in:', authError.message);
+      throw error;
     } finally {
       setLoading(false);
     }
   };
-  // Mock register function - in a real app, this would call an API
+  // Register new user
   const register = async (name: string, username: string, email: string, password: string) => {
     setLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Create a new user
-      const user = {
-        id: Math.random().toString(36).substring(2, 15),
+      // 1. Create auth user
+      const {
+        data: authData,
+        error: authError
+      } = await supabase.auth.signUp({
+        email,
+        password
+      });
+      if (authError) throw authError;
+      if (!authData.user) {
+        throw new Error('User creation failed');
+      }
+      // 2. Create profile record
+      const {
+        error: profileError
+      } = await supabase.from('profiles').insert([{
+        id: authData.user.id,
         name,
         username,
         email,
-        avatar: null
-      };
-      setCurrentUser(user);
-      localStorage.setItem('user', JSON.stringify(user));
+        created_at: new Date()
+      }]);
+      if (profileError) throw profileError;
+      // User profile is fetched by the auth state change listener
+    } catch (error) {
+      console.error('Error during registration:', error);
+      throw error;
     } finally {
       setLoading(false);
     }
   };
-  const logout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('user');
+  // Sign out
+  const logout = async () => {
+    try {
+      const {
+        error
+      } = await supabase.auth.signOut();
+      if (error) throw error;
+      setCurrentUser(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
+    }
   };
   const value = {
     currentUser,
