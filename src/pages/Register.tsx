@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Link } from "../components/Link";
-import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-react";
+
 export function Register() {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -14,8 +14,12 @@ export function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Form submitted", { name, username, email });
+    
+    // Validate form fields
     if (!name || !username || !email || !password) {
       setError("Please fill in all fields");
       return;
@@ -28,19 +32,42 @@ export function Register() {
       setError("Password must be at least 8 characters");
       return;
     }
+    
     try {
       setError("");
       setIsLoading(true);
+      console.log("Calling register function...");
+      
+      // Call register function from AuthContext
       await register(name, username, email, password);
-      // After successful registration, redirect to onboarding
-      navigate("/onboarding");
-    } catch (err) {
-      setError("Failed to create an account");
+      
+      console.log("Registration successful, redirecting to onboarding");
+      
+      // Use setTimeout to ensure state updates have completed before navigation
+      setTimeout(() => {
+        navigate("/onboarding");
+      }, 500);
+      
+    } catch (error: unknown) {
+      console.error("Registration error:", error);
+      
+      // Handle specific error cases
+      if (error instanceof Error) {
+        if (error.message.includes("already registered")) {
+          setError("This email is already registered");
+        } else if (error.message.includes("duplicate key")) {
+          setError("This username is already taken");
+        } else {
+          setError(error.message);
+        }
+      } else {
+        setError("An error occurred during registration");
+      }
     } finally {
       setIsLoading(false);
     }
   };
-  // Password strength indicator
+
   const getPasswordStrength = () => {
     if (!password)
       return {
@@ -59,27 +86,48 @@ export function Register() {
     };
   };
   const passwordStrength = getPasswordStrength();
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="p-4 md:px-6 lg:px-8 border-b">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link to="/" className="text-xl font-bold tracking-tight">
-            BEESIDES
-          </Link>
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center space-x-2">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 32 32"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect width="32" height="32" rx="16" fill="black" />
+              <path
+                d="M22 10H10V22H22V10Z"
+                fill="white"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="text-xl font-bold">Beesides</span>
+          </div>
         </div>
       </header>
-      <main className="flex-1 flex items-center justify-center p-4 py-8">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">Create your account</h1>
-            <p className="text-gray-600">Join the Beesides community</p>
+      <main className="flex-1 flex items-center justify-center p-4 md:p-6 lg:p-8">
+        <div className="w-full max-w-md space-y-8">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">Create your account</h1>
+            <p className="mt-2 text-gray-600">
+              Join Beesides to start sharing your thoughts and connecting with
+              others.
+            </p>
           </div>
           {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
               {error}
             </div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="name" className="block text-sm font-medium mb-1">
                 Full Name
@@ -140,51 +188,46 @@ export function Register() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black pr-10"
-                  placeholder="••••••••"
+                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+                  placeholder="Enter a password"
                   required
-                  minLength={8}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  onClick={() => setShowPassword((v) => !v)}
+                  tabIndex={-1}
                 >
-                  {showPassword ? (
-                    <EyeOffIcon size={18} />
-                  ) : (
-                    <EyeIcon size={18} />
-                  )}
+                  {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                 </button>
-              </div>
-              {password && (
-                <div className="mt-2">
-                  <div className="flex justify-between items-center mb-1">
-                    <div className="text-xs">{passwordStrength.text}</div>
-                    <div className="text-xs">
-                      {password.length}/8+ characters
+                {password && (
+                  <div className="mt-2">
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="text-xs">{passwordStrength.text}</div>
+                      <div className="text-xs">
+                        {password.length}/8+ characters
+                      </div>
+                    </div>
+                    <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${passwordStrength.strength === 1
+                            ? "bg-red-500"
+                            : passwordStrength.strength === 2
+                              ? "bg-yellow-500"
+                              : passwordStrength.strength === 3
+                                ? "bg-green-500"
+                                : passwordStrength.strength >= 4
+                                  ? "bg-green-600"
+                                  : ""
+                          }`}
+                        style={{
+                          width: `${(passwordStrength.strength / 4) * 100}%`,
+                        }}
+                      ></div>
                     </div>
                   </div>
-                  <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        passwordStrength.strength === 1
-                          ? "bg-red-500"
-                          : passwordStrength.strength === 2
-                          ? "bg-yellow-500"
-                          : passwordStrength.strength === 3
-                          ? "bg-green-500"
-                          : passwordStrength.strength === 4
-                          ? "bg-green-600"
-                          : ""
-                      }`}
-                      style={{
-                        width: `${(passwordStrength.strength / 4) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             <div>
               <label

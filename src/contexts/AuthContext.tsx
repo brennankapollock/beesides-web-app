@@ -44,20 +44,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Fetch user profile data from profiles table
   const fetchUserProfile = async (user: User) => {
     try {
-      // Using the user_stats view to get all profile info plus stats in one query
-      const { data, error } = await supabase
-        .from("user_stats")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+      // First try to get from user_stats view
+      let data;
+      let error;
+      
+      try {
+        const result = await supabase
+          .from("user_stats")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+          
+        data = result.data;
+        error = result.error;
+      } catch (viewError) {
+        console.warn("Error fetching from user_stats view, falling back to profiles table:", viewError);
+        // Fall back to profiles table if view has issues
+        const result = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+          
+        data = result.data;
+        error = result.error;
+      }
 
-      if (error) throw error;
+      if (error) {
+        // If still no profile, create one
+        if (error.code === 'PGRST116') {
+          console.log("No profile found, creating one");
+          const { data: newProfile, error: insertError } = await supabase
+            .from("profiles")
+            .insert([
+              {
+                id: user.id,
+                email: user.email,
+                name: user.user_metadata?.name || '',
+                username: user.user_metadata?.username || '',
+                created_at: new Date()
+              }
+            ])
+            .select()
+            .single();
+            
+          if (insertError) throw insertError;
+          data = newProfile;
+        } else {
+          throw error;
+        }
+      }
 
       const userProfile: AuthUser = {
         id: user.id,
         email: user.email || "",
-        name: data?.name || "",
-        username: data?.username || "",
+        name: data?.name || user.user_metadata?.name || "",
+        username: data?.username || user.user_metadata?.username || "",
         avatar: data?.avatar_url,
         bio: data?.bio,
         created_at: data?.created_at,
@@ -95,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }; 
   // Register new user
   const register = async (
     name: string,
@@ -105,27 +147,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ) => {
     setLoading(true);
     try {
-      // 1. Create auth user
+      console.log("Starting registration process", { name, username, email });
+      
+      // 1. Create auth user - simpler approach
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            name,
+            username,
+          },
+        },
       });
+      
+      console.log("Auth signup result:", authData?.user?.id);
+      
       if (authError) throw authError;
       if (!authData.user) {
         throw new Error("User creation failed");
       }
-      // 2. Create profile record
-      const { error: profileError } = await supabase.from("profiles").insert([
-        {
-          id: authData.user.id,
-          name,
-          username,
-          email,
-          created_at: new Date(),
-        },
-      ]);
-      if (profileError) throw profileError;
-      // User profile is fetched by the auth state change listener
+
+      // Our database trigger will create the profile automatically
+      console.log("User created successfully, ID:", authData.user.id);
+      
+      // Set the user as currentUser for session
+      const userProfile: AuthUser = {
+        id: authData.user.id,
+        email: email,
+        name: name,
+        username: username,
+        created_at: new Date().toISOString(),
+        stats: {
+          ratings: 0,
+          reviews: 0,
+          collections: 0,
+          lists: 0,
+          followers: 0,
+          following: 0
+        }
+      };
+      
+      setCurrentUser(userProfile);
+      console.log("Registration complete, user set in context");
+      return;
     } catch (error) {
       console.error("Error during registration:", error);
       throw error;
@@ -133,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   };
+
   // Sign out
   const logout = async () => {
     try {
