@@ -109,12 +109,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            name,
+            username,
+          },
+        },
       });
       if (authError) throw authError;
       if (!authData.user) {
         throw new Error("User creation failed");
       }
-      // 2. Create profile record
+
+      // 2. Create profile record - use signInWithPassword to ensure we have a valid session
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) throw signInError;
+
+      // Now that user is authenticated, create the profile
       const { error: profileError } = await supabase.from("profiles").insert([
         {
           id: authData.user.id,
@@ -124,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           created_at: new Date(),
         },
       ]);
+
       if (profileError) throw profileError;
       // User profile is fetched by the auth state change listener
     } catch (error) {
