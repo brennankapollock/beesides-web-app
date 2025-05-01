@@ -1,174 +1,452 @@
-import React, { useState } from 'react';
-import { Layout } from '../components/Layout';
-import { AlbumCard } from '../components/AlbumCard';
-import { AlbumListItem } from '../components/AlbumListItem';
-import { SettingsIcon, EditIcon, ListMusicIcon, StarIcon, BarChart2Icon, UserIcon, PlusIcon } from 'lucide-react';
-import { Link } from '../components/Link';
-import { ViewToggle } from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
-import { CreateCollectionModal } from '../components/CreateCollectionModal';
+import { useState, useEffect } from "react";
+import { Layout } from "../components/Layout";
+import { AlbumCard } from "../components/AlbumCard";
+import { AlbumListItem } from "../components/AlbumListItem";
+import { ViewToggle } from "../components/ViewToggle";
+import { useViewMode } from "../hooks/useViewMode";
+import { CreateCollectionModal } from "../components/CreateCollectionModal";
+import { useAuth } from "../hooks/useAuth";
+import { supabase } from "../lib/supabase";
+import { useParams, Link } from "react-router-dom";
+// Icons import
+import {
+  Edit as EditIcon,
+  Settings as SettingsIcon,
+  ListMusic as ListMusicIcon,
+  Star as StarIcon,
+  BarChart2 as BarChart2Icon,
+  User as UserIcon,
+  Plus as PlusIcon,
+} from "lucide-react";
+
+// User interface to properly type user data
+interface User {
+  id?: string;
+  name?: string;
+  username?: string;
+  avatar?: string | null;
+  created_at?: string;
+  joinDate?: string;
+  bio?: string;
+  stats?: {
+    ratings: number;
+    reviews: number;
+    lists: number;
+    followers: number;
+    following: number;
+  };
+}
+
+// Define Album type to match the one used in AlbumCard and other components
+interface Album {
+  id: number;
+  title: string;
+  artist: string;
+  cover: string;
+  rating?: number;
+  genre?: string;
+  releaseDate?: string;
+}
+
 export function Profile() {
-  const [activeTab, setActiveTab] = useState('collection');
-  const [viewMode, setViewMode] = useViewMode('grid');
-  const [isCreateCollectionModalOpen, setIsCreateCollectionModalOpen] = useState(false);
-  const user = {
-    name: 'John Doe',
-    username: 'musiclover42',
+  const [activeTab, setActiveTab] = useState("collection");
+  const [viewMode, setViewMode] = useViewMode("grid");
+  const [isCreateCollectionModalOpen, setIsCreateCollectionModalOpen] =
+    useState(false);
+  const [isLoading, setLoading] = useState(true);
+  const [profileData, setProfileData] = useState<User | null>(null);
+  const { currentUser } = useAuth();
+  const { username } = useParams<{ username: string }>();
+
+  // User profile to display - either the current user or the profile being viewed
+  const user: User = profileData || {
+    name: "User",
+    username: username || "user",
     avatar: null,
-    joinDate: 'Member since 2022',
-    bio: 'Music enthusiast with a passion for discovering new sounds and artists. Collector of vinyl and digital music across various genres.',
+    joinDate: "Loading...",
+    bio: "Loading profile information...",
     stats: {
-      ratings: 478,
-      reviews: 62,
-      lists: 14,
-      followers: 125,
-      following: 87
+      ratings: 0,
+      reviews: 0,
+      lists: 0,
+      followers: 0,
+      following: 0,
+    },
+  };
+
+  // Fetch profile data
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      try {
+        setLoading(true);
+
+        // If we're looking at the current user's profile, use the currentUser data
+        if (currentUser && (!username || username === currentUser.username)) {
+          setProfileData({
+            ...currentUser,
+            joinDate: `Member since ${new Date(
+              currentUser.created_at || Date.now()
+            ).getFullYear()}`,
+          });
+        } else {
+          // Otherwise, fetch the profile based on the username in the URL
+          const { data, error } = await supabase
+            .from("user_stats")
+            .select("*")
+            .eq("username", username)
+            .single();
+
+          if (error) throw error;
+
+          if (data) {
+            setProfileData({
+              name: data.name,
+              username: data.username,
+              avatar: data.avatar_url,
+              joinDate: `Member since ${new Date(
+                data.created_at || Date.now()
+              ).getFullYear()}`,
+              bio: data.bio || "No bio available",
+              stats: {
+                ratings: data.ratings_count || 0,
+                reviews: data.reviews_count || 0,
+                lists: data.collections_count || 0,
+                followers: data.followers_count || 0,
+                following: data.following_count || 0,
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfileData();
+  }, [username, currentUser]);
+  // State for user's albums and collections
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [collections, setCollections] = useState<
+    Array<{
+      id: string | number;
+      title: string;
+      itemCount: number;
+      coverImages: string[];
+    }>
+  >([]);
+  const [loadingAlbums, setLoadingAlbums] = useState(true);
+  const [loadingCollections, setLoadingCollections] = useState(true);
+
+  // Fetch user's rated albums
+  useEffect(() => {
+    const fetchUserRatedAlbums = async () => {
+      if (!user.username) return;
+
+      try {
+        setLoadingAlbums(true);
+
+        // Get albums this user has rated
+        const { data, error } = await supabase
+          .from("ratings")
+          .select(
+            `
+            album_id,
+            rating,
+            albums!inner(
+              id,
+              title,
+              cover_url,
+              release_date,
+              artists!inner(name)
+            )
+          `
+          )
+          .eq("user_id", profileData?.id)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (error) throw error;
+
+        if (data) {
+          // Transform the data to match our component requirements
+          const formattedAlbums = data.map((item) => {
+            // Define explicit types for the data structure
+            type AlbumData = {
+              id?: string;
+              title?: string;
+              cover_url?: string;
+              release_date?: string;
+              artists?: Array<{ name?: string }> | { name?: string };
+            };
+
+            // Handle albums as either an object or array
+            const albumData: AlbumData = Array.isArray(item.albums)
+              ? item.albums[0] || {}
+              : item.albums || {};
+
+            // Extract artist name with proper type handling
+            let artistName = "";
+            if (albumData.artists) {
+              if (
+                Array.isArray(albumData.artists) &&
+                albumData.artists.length > 0
+              ) {
+                artistName = albumData.artists[0]?.name || "";
+              } else if (
+                typeof albumData.artists === "object" &&
+                "name" in albumData.artists
+              ) {
+                artistName = albumData.artists.name || "";
+              }
+            }
+
+            return {
+              id: item.album_id,
+              title: albumData.title || "",
+              artist: artistName,
+              cover: albumData.cover_url || "",
+              rating: item.rating || 0,
+              releaseDate: albumData.release_date
+                ? new Date(albumData.release_date).getFullYear().toString()
+                : "",
+            };
+          });
+
+          setAlbums(formattedAlbums);
+        }
+      } catch (error) {
+        console.error("Error fetching user albums:", error);
+      } finally {
+        setLoadingAlbums(false);
+      }
+    };
+
+    fetchUserRatedAlbums();
+  }, [user.username, profileData?.id]);
+
+  // Fetch user's collections
+  useEffect(() => {
+    const fetchUserCollections = async () => {
+      if (!user.username) return;
+
+      try {
+        setLoadingCollections(true);
+
+        // Get collections from our collection_details view
+        const { data, error } = await supabase
+          .from("collection_details")
+          .select("*")
+          .eq("user_username", user.username)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        if (data) {
+          // Transform the data to match our component requirements
+          const formattedCollections = data.map((collection) => ({
+            id: collection.id,
+            title: collection.name,
+            itemCount: collection.album_count,
+            coverImages: collection.cover_images?.slice(0, 3) || [],
+          }));
+
+          setCollections(formattedCollections);
+        }
+      } catch (error) {
+        console.error("Error fetching collections:", error);
+      } finally {
+        setLoadingCollections(false);
+      }
+    };
+
+    fetchUserCollections();
+  }, [user.username]);
+  const handleCreateCollection = async (collection: {
+    name: string;
+    description: string;
+    isPrivate: boolean;
+    albums: Album[];
+  }) => {
+    try {
+      if (!currentUser?.id) {
+        alert("You must be logged in to create a collection");
+        return;
+      }
+
+      // Create the collection in Supabase
+      const { data: collectionData, error: collectionError } = await supabase
+        .from("collections")
+        .insert({
+          user_id: currentUser.id,
+          name: collection.name,
+          description: collection.description,
+          is_private: collection.isPrivate,
+        })
+        .select();
+
+      if (collectionError) throw collectionError;
+
+      // Add albums to the collection
+      if (
+        collection.albums.length > 0 &&
+        collectionData &&
+        collectionData[0]?.id
+      ) {
+        const collectionAlbums = collection.albums.map((album) => ({
+          collection_id: collectionData[0].id,
+          album_id: String(album.id), // Ensure album_id is a string
+        }));
+
+        const { error: albumsError } = await supabase
+          .from("collection_albums")
+          .insert(collectionAlbums);
+
+        if (albumsError) throw albumsError;
+      }
+
+      // Add the new collection to our local state
+      const newCollection = {
+        id: collectionData && collectionData[0] ? collectionData[0].id : "",
+        title: collection.name,
+        itemCount: collection.albums.length,
+        coverImages: collection.albums.slice(0, 3).map((album) => album.cover),
+      };
+
+      setCollections((prev) => [newCollection, ...prev]);
+
+      // Show success message
+      alert("Collection created successfully!");
+    } catch (error) {
+      console.error("Error creating collection:", error);
+      alert("Failed to create collection. Please try again.");
     }
   };
-  const albums = [{
-    id: 1,
-    title: 'The Suffering',
-    artist: 'Emily Bryan',
-    cover: 'https://images.unsplash.com/photo-1599719500956-d158a3abd461?q=80&w=2070&auto=format&fit=crop',
-    rating: 9.2,
-    genre: 'Classic',
-    releaseDate: '2023'
-  }, {
-    id: 2,
-    title: 'Daily Chaos',
-    artist: 'Emily Bryan',
-    cover: 'https://images.unsplash.com/photo-1603384164656-2b0e573ffa0b?q=80&w=1974&auto=format&fit=crop',
-    rating: 8.7,
-    genre: '90s',
-    releaseDate: '2022'
-  }, {
-    id: 3,
-    title: 'Simple',
-    artist: 'Ryan Parker',
-    cover: 'https://images.unsplash.com/photo-1594623930572-300a3011d9ae?q=80&w=2070&auto=format&fit=crop',
-    rating: 7.9,
-    genre: 'New',
-    releaseDate: '2024'
-  }, {
-    id: 4,
-    title: 'Midnight Tales',
-    artist: 'Sarah Johnson',
-    cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=2069&auto=format&fit=crop',
-    rating: 9.5,
-    genre: 'Electronic',
-    releaseDate: '2023'
-  }];
-  const lists = [{
-    id: 1,
-    title: 'Best Albums of 2023',
-    itemCount: 12,
-    coverImages: ['https://images.unsplash.com/photo-1599719500956-d158a3abd461?q=80&w=2070&auto=format&fit=crop', 'https://images.unsplash.com/photo-1603384164656-2b0e573ffa0b?q=80&w=1974&auto=format&fit=crop', 'https://images.unsplash.com/photo-1594623930572-300a3011d9ae?q=80&w=2070&auto=format&fit=crop']
-  }, {
-    id: 2,
-    title: 'Desert Island Collection',
-    itemCount: 8,
-    coverImages: ['https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=2069&auto=format&fit=crop', 'https://images.unsplash.com/photo-1598387846148-47e82ee120cc?q=80&w=1976&auto=format&fit=crop']
-  }, {
-    id: 3,
-    title: 'Workout Playlist',
-    itemCount: 15,
-    coverImages: ['https://images.unsplash.com/photo-1598518619776-eae3f8a34eac?q=80&w=1974&auto=format&fit=crop', 'https://images.unsplash.com/photo-1526327760257-75f515c8eacd?q=80&w=1974&auto=format&fit=crop', 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?q=80&w=2070&auto=format&fit=crop']
-  }];
-  const handleCreateCollection = (collection: any) => {
-    // In a real app, this would send the collection to an API
-    console.log('Collection created:', collection);
-    // Show a success message or update the UI
-    alert('Collection created successfully!');
-    // Add the new collection to the lists array
-    const newList = {
-      id: lists.length + 1,
-      title: collection.name,
-      itemCount: collection.albums.length,
-      coverImages: collection.albums.slice(0, 3).map((album: any) => album.cover)
-    };
-    // This would be handled by state management in a real app
-    lists.push(newList);
-  };
-  return <Layout>
+  return (
+    <Layout>
       <div className="max-w-7xl mx-auto px-4 pt-6 pb-20 md:px-6 lg:px-8">
         {/* Profile Header */}
-        <div className="bg-gray-50 rounded-2xl p-6 md:p-8 mb-8">
-          <div className="md:flex gap-8 items-center">
-            <div className="mb-6 md:mb-0 flex justify-center">
-              <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-black flex items-center justify-center text-white text-3xl font-bold">
-                {user.name.charAt(0)}
-              </div>
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-bold mb-1">
-                    {user.name}
-                  </h1>
-                  <p className="text-sm opacity-70">
-                    @{user.username} · {user.joinDate}
-                  </p>
-                </div>
-                <div className="mt-4 md:mt-0 flex justify-center md:justify-end gap-2">
-                  <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors">
-                    Follow
-                  </button>
-                  <button className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                    <EditIcon size={20} />
-                  </button>
-                  <button className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                    <SettingsIcon size={20} />
-                  </button>
+        {isLoading ? (
+          <div className="bg-gray-50 rounded-2xl p-6 md:p-8 mb-8 flex justify-center items-center min-h-[200px]">
+            <p>Loading profile information...</p>
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-2xl p-6 md:p-8 mb-8">
+            <div className="md:flex gap-8 items-center">
+              {" "}
+              <div className="mb-6 md:mb-0 flex justify-center">
+                <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-black flex items-center justify-center text-white text-3xl font-bold">
+                  {user?.name ? user.name.charAt(0) : "?"}
                 </div>
               </div>
-              <p className="mb-6">{user.bio}</p>
-              <div className="flex flex-wrap justify-center md:justify-start gap-6">
-                <div className="text-center">
-                  <p className="text-xl font-bold">{user.stats.ratings}</p>
-                  <p className="text-sm opacity-70">Ratings</p>
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                  <div>
+                    <h1 className="text-2xl md:text-3xl font-bold mb-1">
+                      {user?.name || "User"}
+                    </h1>
+                    <p className="text-sm opacity-70">
+                      @{user?.username || "username"} · {user?.joinDate || ""}
+                    </p>
+                  </div>
+                  <div className="mt-4 md:mt-0 flex justify-center md:justify-end gap-2">
+                    <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors">
+                      Follow
+                    </button>
+                    <button className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                      <EditIcon size={20} />
+                    </button>
+                    <button className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                      <SettingsIcon size={20} />
+                    </button>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold">{user.stats.reviews}</p>
-                  <p className="text-sm opacity-70">Reviews</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold">{user.stats.lists}</p>
-                  <p className="text-sm opacity-70">Lists</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold">{user.stats.followers}</p>
-                  <p className="text-sm opacity-70">Followers</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold">{user.stats.following}</p>
-                  <p className="text-sm opacity-70">Following</p>
+                <p className="mb-6">{user?.bio || "No bio available"}</p>
+                <div className="flex flex-wrap justify-center md:justify-start gap-6">
+                  <div className="text-center">
+                    <p className="text-xl font-bold">
+                      {user?.stats?.ratings || 0}
+                    </p>
+                    <p className="text-sm opacity-70">Ratings</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold">
+                      {user?.stats?.reviews || 0}
+                    </p>
+                    <p className="text-sm opacity-70">Reviews</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold">
+                      {user?.stats?.lists || 0}
+                    </p>
+                    <p className="text-sm opacity-70">Lists</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold">
+                      {user?.stats?.followers || 0}
+                    </p>
+                    <p className="text-sm opacity-70">Followers</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold">
+                      {user?.stats?.following || 0}
+                    </p>
+                    <p className="text-sm opacity-70">Following</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
         {/* Tabs */}
         <div className="mb-8">
           <div className="flex overflow-x-auto border-b">
-            <button onClick={() => setActiveTab('collection')} className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === 'collection' ? 'border-b-2 border-black' : 'opacity-70'}`}>
+            <button
+              onClick={() => setActiveTab("collection")}
+              className={`px-4 py-2 font-medium whitespace-nowrap ${
+                activeTab === "collection"
+                  ? "border-b-2 border-black"
+                  : "opacity-70"
+              }`}
+            >
               <span className="flex items-center gap-2">
                 <ListMusicIcon size={18} />
                 Collection
               </span>
             </button>
-            <button onClick={() => setActiveTab('ratings')} className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === 'ratings' ? 'border-b-2 border-black' : 'opacity-70'}`}>
+            <button
+              onClick={() => setActiveTab("ratings")}
+              className={`px-4 py-2 font-medium whitespace-nowrap ${
+                activeTab === "ratings"
+                  ? "border-b-2 border-black"
+                  : "opacity-70"
+              }`}
+            >
               <span className="flex items-center gap-2">
                 <StarIcon size={18} />
                 Ratings
               </span>
             </button>
-            <button onClick={() => setActiveTab('lists')} className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === 'lists' ? 'border-b-2 border-black' : 'opacity-70'}`}>
+            <button
+              onClick={() => setActiveTab("lists")}
+              className={`px-4 py-2 font-medium whitespace-nowrap ${
+                activeTab === "lists" ? "border-b-2 border-black" : "opacity-70"
+              }`}
+            >
               <span className="flex items-center gap-2">
                 <BarChart2Icon size={18} />
                 Lists
               </span>
             </button>
-            <button onClick={() => setActiveTab('followers')} className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === 'followers' ? 'border-b-2 border-black' : 'opacity-70'}`}>
+            <button
+              onClick={() => setActiveTab("followers")}
+              className={`px-4 py-2 font-medium whitespace-nowrap ${
+                activeTab === "followers"
+                  ? "border-b-2 border-black"
+                  : "opacity-70"
+              }`}
+            >
               <span className="flex items-center gap-2">
                 <UserIcon size={18} />
                 Followers
@@ -177,9 +455,12 @@ export function Profile() {
           </div>
         </div>
         {/* Tab Content */}
-        {activeTab === 'collection' && <div>
+        {activeTab === "collection" && (
+          <div>
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold">Collection (42)</h2>
+              <h2 className="text-xl font-bold">
+                Collection ({albums.length})
+              </h2>
               <div className="flex gap-2">
                 <ViewToggle viewMode={viewMode} onViewChange={setViewMode} />
                 <button className="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
@@ -190,52 +471,138 @@ export function Profile() {
                 </button>
               </div>
             </div>
-            <div className={`transition-all duration-300 ${viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-4 gap-6' : 'space-y-4'}`}>
-              {albums.map(album => <Link key={album.id} to={`/album/${album.id}`}>
-                  {viewMode === 'grid' ? <AlbumCard album={album} /> : <AlbumListItem album={album} />}
-                </Link>)}
-            </div>
-          </div>}
-        {activeTab === 'lists' && <div>
+
+            {loadingAlbums ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">Loading albums...</p>
+              </div>
+            ) : albums.length === 0 ? (
+              <div className="text-center py-12 bg-gray-50 rounded-xl">
+                <StarIcon size={32} className="mx-auto mb-2 text-gray-400" />
+                <p className="text-gray-500">No rated albums yet</p>
+                {currentUser && currentUser.username === user.username && (
+                  <p className="text-sm text-gray-400 mt-1">
+                    Start rating albums to build your collection
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div
+                className={`transition-all duration-300 ${
+                  viewMode === "grid"
+                    ? "grid grid-cols-2 md:grid-cols-4 gap-6"
+                    : "space-y-4"
+                }`}
+              >
+                {albums.map((album) => (
+                  <Link key={album.id} to={`/album/${album.id}`}>
+                    {viewMode === "grid" ? (
+                      <AlbumCard album={album} />
+                    ) : (
+                      <AlbumListItem album={album} />
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {activeTab === "lists" && (
+          <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold">
-                Collections ({lists.length})
+                Collections ({collections.length})
               </h2>
-              <button className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors flex items-center gap-2" onClick={() => setIsCreateCollectionModalOpen(true)}>
-                <PlusIcon size={18} />
-                <span>Create Collection</span>
-              </button>
+              {currentUser && currentUser.username === user.username && (
+                <button
+                  className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors flex items-center gap-2"
+                  onClick={() => setIsCreateCollectionModalOpen(true)}
+                >
+                  <PlusIcon size={18} />
+                  <span>Create Collection</span>
+                </button>
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {lists.map(list => <div key={list.id} className="bg-gray-50 p-4 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
-                  <div className="flex gap-3">
-                    <div className="flex-shrink-0 w-16">
-                      <div className="relative w-16 h-16">
-                        {list.coverImages && list.coverImages.length > 0 ? <>
-                            <img src={list.coverImages[0]} alt="" className="absolute top-0 left-0 w-12 h-12 rounded-md object-cover border border-white" />
-                            {list.coverImages.length > 1 && <img src={list.coverImages[1]} alt="" className="absolute bottom-0 right-0 w-12 h-12 rounded-md object-cover border border-white" />}
-                          </> : <div className="w-16 h-16 rounded-md bg-gray-200 flex items-center justify-center">
-                            <ListMusicIcon size={24} className="text-gray-400" />
-                          </div>}
+
+            {loadingCollections ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">Loading collections...</p>
+              </div>
+            ) : collections.length === 0 ? (
+              <div className="text-center py-12 bg-gray-50 rounded-xl">
+                <ListMusicIcon
+                  size={32}
+                  className="mx-auto mb-2 text-gray-400"
+                />
+                <p className="text-gray-500">No collections yet</p>
+                {currentUser && currentUser.username === user.username && (
+                  <p className="text-sm text-gray-400 mt-1">
+                    Create your first collection to organize your favorite
+                    albums
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {collections.map((collection) => (
+                  <div
+                    key={collection.id}
+                    className="bg-gray-50 p-4 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-16">
+                        <div className="relative w-16 h-16">
+                          {collection.coverImages &&
+                          collection.coverImages.length > 0 ? (
+                            <>
+                              <img
+                                src={collection.coverImages[0]}
+                                alt=""
+                                className="absolute top-0 left-0 w-12 h-12 rounded-md object-cover border border-white"
+                              />
+                              {collection.coverImages.length > 1 && (
+                                <img
+                                  src={collection.coverImages[1]}
+                                  alt=""
+                                  className="absolute bottom-0 right-0 w-12 h-12 rounded-md object-cover border border-white"
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <div className="w-16 h-16 rounded-md bg-gray-200 flex items-center justify-center">
+                              <ListMusicIcon
+                                size={24}
+                                className="text-gray-400"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold mb-1">{list.title}</h3>
-                      <p className="text-sm opacity-70">
-                        {list.itemCount} albums
-                      </p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">
-                          {user.username}
-                        </span>
+                      <div className="flex-1">
+                        <h3 className="font-bold mb-1">{collection.title}</h3>
+                        <p className="text-sm opacity-70">
+                          {collection.itemCount} albums
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">
+                            {user.username}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>)}
-            </div>
-          </div>}
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {/* Create Collection Modal */}
-      <CreateCollectionModal isOpen={isCreateCollectionModalOpen} onClose={() => setIsCreateCollectionModalOpen(false)} onSubmit={handleCreateCollection} />
-    </Layout>;
+      <CreateCollectionModal
+        isOpen={isCreateCollectionModalOpen}
+        onClose={() => setIsCreateCollectionModalOpen(false)}
+        onSubmit={handleCreateCollection}
+      />
+    </Layout>
+  );
 }
