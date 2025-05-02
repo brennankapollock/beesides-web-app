@@ -4,6 +4,10 @@ applyTo: "**"
 
 # Beesides Web App - GitHub Copilot Instructions
 
+## Important Note
+
+ALWAYS USE THE MCP SERVERS AND TOOLS I HAVE RUNNING
+
 ## Project Overview
 
 Beesides is a community-driven music discovery platform that helps users find their next favorite albums through people, not algorithms. The platform creates a space for music enthusiasts to rate, review, collect, and share music, breaking the algorithmic loop that keeps users listening to the same types of music.
@@ -16,7 +20,7 @@ Beesides is a community-driven music discovery platform that helps users find th
 - **State Management**: React Context API
 - **Backend Integration**: Supabase
 - **Build Tool**: Vite
-- **Server Requirements**: Always use Supabase, Context7, and sequential thinking MCP servers for all backend integrations and data processing
+- **Server Requirements**: Always use Supabase, Context7, and sequential thinking MCP servers for all backend integrations and data processing. They are running within the IDE as tools.
 
 ## Code Style and Best Practices
 

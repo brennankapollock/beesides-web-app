@@ -18,7 +18,7 @@ export function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submitted", { name, username, email });
-    
+
     // Validate form fields
     if (!name || !username || !email || !password) {
       setError("Please fill in all fields");
@@ -32,28 +32,32 @@ export function Register() {
       setError("Password must be at least 8 characters");
       return;
     }
-    
+
     try {
       setError("");
       setIsLoading(true);
       console.log("Calling register function...");
-      
+
       // Call register function from AuthContext
       await register(name, username, email, password);
-      
+
       console.log("Registration successful, redirecting to onboarding");
-      
-      // Use setTimeout to ensure state updates have completed before navigation
-      setTimeout(() => {
-        navigate("/onboarding");
-      }, 500);
-      
+
+      // Store a flag indicating this user needs onboarding
+      sessionStorage.setItem("needs_onboarding", "true");
+
+      // Navigate with a query parameter to indicate we're coming from signup
+      console.log("Navigating to onboarding flow...");
+      navigate("/onboarding?from=signup", { replace: true });
     } catch (error: unknown) {
       console.error("Registration error:", error);
-      
+
       // Handle specific error cases
       if (error instanceof Error) {
-        if (error.message.includes("already registered")) {
+        if (
+          error.message.includes("already registered") ||
+          error.message.includes("User already registered")
+        ) {
           setError("This email is already registered");
         } else if (error.message.includes("duplicate key")) {
           setError("This username is already taken");
@@ -198,7 +202,11 @@ export function Register() {
                   onClick={() => setShowPassword((v) => !v)}
                   tabIndex={-1}
                 >
-                  {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                  {showPassword ? (
+                    <EyeOffIcon size={18} />
+                  ) : (
+                    <EyeIcon size={18} />
+                  )}
                 </button>
                 {password && (
                   <div className="mt-2">
@@ -210,16 +218,17 @@ export function Register() {
                     </div>
                     <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
                       <div
-                        className={`h-full ${passwordStrength.strength === 1
+                        className={`h-full ${
+                          passwordStrength.strength === 1
                             ? "bg-red-500"
                             : passwordStrength.strength === 2
-                              ? "bg-yellow-500"
-                              : passwordStrength.strength === 3
-                                ? "bg-green-500"
-                                : passwordStrength.strength >= 4
-                                  ? "bg-green-600"
-                                  : ""
-                          }`}
+                            ? "bg-yellow-500"
+                            : passwordStrength.strength === 3
+                            ? "bg-green-500"
+                            : passwordStrength.strength >= 4
+                            ? "bg-green-600"
+                            : ""
+                        }`}
                         style={{
                           width: `${(passwordStrength.strength / 4) * 100}%`,
                         }}

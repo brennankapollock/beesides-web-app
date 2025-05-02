@@ -4,6 +4,7 @@ import { HomeIcon, SearchIcon, CompassIcon, UserIcon, LibraryIcon, TrendingUpIco
 interface BottomSheetNavigationProps {
   currentUser: {
     username: string;
+    isLoading?: boolean;
   };
 }
 export function BottomSheetNavigation({
@@ -16,22 +17,38 @@ export function BottomSheetNavigation({
   const [isDesktop, setIsDesktop] = useState(false);
   const [isButtonExpanded, setIsButtonExpanded] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  // Primary navigation links
-  const primaryLinks = [{
-    name: 'Home',
-    to: '/',
-    icon: <HomeIcon size={24} />
-  }, {
-    name: 'Discover',
-    to: '/discover',
-    icon: <CompassIcon size={24} />
-  }, {
-    name: 'Search',
-    to: '/search',
-    icon: <SearchIcon size={24} />
-  }, {
+  // Always show profile link in navigation - it will redirect to login if needed
+  const showProfileLink = true;
+  
+  console.log("BottomSheetNavigation rendering with:", {
+    username: currentUser.username || "not set",
+    isLoading: !!currentUser.isLoading,
+    showProfileLink
+  });
+  
+  // Base primary navigation links
+  const baseLinks = [
+    {
+      name: 'Home',
+      to: '/',
+      icon: <HomeIcon size={24} />
+    }, 
+    {
+      name: 'Discover',
+      to: '/discover',
+      icon: <CompassIcon size={24} />
+    }, 
+    {
+      name: 'Search',
+      to: '/search',
+      icon: <SearchIcon size={24} />
+    }
+  ];
+  
+  // Primary navigation links - include profile
+  const primaryLinks = [...baseLinks, {
     name: 'Profile',
-    to: `/profile/${currentUser.username}`,
+    to: '/profile/me', // Use a standard path that will be handled properly
     icon: <UserIcon size={24} />
   }];
   // Secondary navigation links

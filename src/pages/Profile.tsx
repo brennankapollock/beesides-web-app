@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Layout } from "../components/Layout";
 import { AlbumCard } from "../components/AlbumCard";
 import { AlbumListItem } from "../components/AlbumListItem";
@@ -55,8 +55,92 @@ export function Profile() {
     useState(false);
   const [isLoading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<User | null>(null);
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const { username } = useParams<{ username: string }>();
+
+  // Create a ref to track if max loading time has been reached
+  const loadingTimeoutRef = React.useRef<boolean>(false);
+
+  // Set a timeout to prevent infinite loading
+  useEffect(() => {
+    if (isLoading && !loadingTimeoutRef.current) {
+      const timer = setTimeout(() => {
+        console.log(
+          "Profile loading timed out after 2 seconds, forcing render"
+        );
+        loadingTimeoutRef.current = true;
+        setLoading(false);
+
+        // If we have current user, use it even if profile data hasn't loaded
+        if (username === "me" && currentUser) {
+          console.log("Using current user data after timeout");
+          setProfileData({
+            ...currentUser,
+            joinDate: `Member since ${new Date(
+              currentUser.created_at || Date.now()
+            ).getFullYear()}`,
+          });
+        }
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, username, currentUser]);
+
+  console.log("Profile page - render:", {
+    routeUsername: username,
+    currentUser: currentUser?.username,
+    authLoading,
+    pageLoading: isLoading,
+    hasTimedOut: loadingTimeoutRef.current,
+  });
+
+  // Handle special paths and redirect if needed
+  useEffect(() => {
+    // Check if we need to handle the 'me' path
+    if (username === "me") {
+      console.log("Special 'me' path detected in Profile:", {
+        authLoading,
+        hasCurrentUser: !!currentUser,
+        username: currentUser?.username,
+        isAuthenticated: !!currentUser,
+      });
+
+      // If we have the user data, use it immediately
+      if (currentUser) {
+        console.log("Setting profile data for 'me' path from currentUser");
+        setProfileData({
+          ...currentUser,
+          joinDate: `Member since ${new Date(
+            currentUser.created_at || Date.now()
+          ).getFullYear()}`,
+        });
+        setLoading(false);
+      }
+      // If still loading auth data, just wait
+      else if (authLoading) {
+        console.log("Still loading auth data for 'me' path");
+      }
+      // If done loading but no user, something is wrong
+      else if (!authLoading && !currentUser) {
+        console.log("No authenticated user found for 'me' path");
+      }
+    } else if (username === "guest" && !authLoading && !currentUser) {
+      console.log("Invalid 'guest' username in URL and user not authenticated");
+    }
+
+    // Add a timeout to prevent infinite loading state
+    const timer = setTimeout(() => {
+      if (isLoading && username === "me") {
+        console.log(
+          "Profile loading timed out after 2 seconds, setting default values"
+        );
+        setLoading(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [username, currentUser, authLoading, isLoading]);
 
   // User profile to display - either the current user or the profile being viewed
   const user: User = profileData || {
@@ -76,29 +160,71 @@ export function Profile() {
 
   // Fetch profile data
   useEffect(() => {
+    // Skip fetch during auth loading for the "me" path
+    if (username === "me" && authLoading) {
+      console.log(
+        "Auth is still loading for 'me' path, delaying profile fetch"
+      );
+      return;
+    }
+
+    // Skip fetching if we already have profile data from the "me" path
+    if (username === "me" && !authLoading && currentUser && profileData) {
+      console.log("Already have profile data for 'me' path, skipping fetch");
+      return;
+    }
+
+    // Skip fetch for "me" path if no user (should redirect to login)
+    if (username === "me" && !authLoading && !currentUser) {
+      console.log(
+        "No authenticated user for 'me' path, skipping fetch (should redirect)"
+      );
+      setLoading(false);
+      return;
+    }
+
     const fetchProfileData = async () => {
       try {
         setLoading(true);
 
+        console.log("Fetching profile data for:", {
+          urlUsername: username,
+          currentUsername: currentUser?.username,
+          isMePath: username === "me",
+          authLoading,
+        });
+
         // If we're looking at the current user's profile, use the currentUser data
-        if (currentUser && (!username || username === currentUser.username)) {
+        if (
+          currentUser &&
+          (username === "me" || !username || username === currentUser.username)
+        ) {
+          console.log(
+            "Using current user data for profile:",
+            currentUser.username
+          );
           setProfileData({
             ...currentUser,
             joinDate: `Member since ${new Date(
               currentUser.created_at || Date.now()
             ).getFullYear()}`,
           });
-        } else {
+        } else if (username && username !== "me" && username !== "guest") {
           // Otherwise, fetch the profile based on the username in the URL
+          console.log("Fetching profile data from database for:", username);
           const { data, error } = await supabase
             .from("user_stats")
             .select("*")
             .eq("username", username)
             .single();
 
-          if (error) throw error;
+          if (error) {
+            console.error("Error fetching profile data:", error);
+            throw error;
+          }
 
           if (data) {
+            console.log("Profile data fetched successfully:", data.username);
             setProfileData({
               name: data.name,
               username: data.username,
@@ -115,7 +241,11 @@ export function Profile() {
                 following: data.following_count || 0,
               },
             });
+          } else {
+            console.log("No profile data found for username:", username);
           }
+        } else {
+          console.log("Invalid username or path, skipping fetch:", username);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -125,7 +255,7 @@ export function Profile() {
     };
 
     fetchProfileData();
-  }, [username, currentUser]);
+  }, [username, currentUser, authLoading, profileData]);
   // State for user's albums and collections
   const [albums, setAlbums] = useState<Album[]>([]);
   const [collections, setCollections] = useState<
