@@ -47,32 +47,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // First try to get from user_stats view
       let data;
       let error;
-      
+
       try {
         const result = await supabase
           .from("user_stats")
           .select("*")
           .eq("id", user.id)
           .single();
-          
+
         data = result.data;
         error = result.error;
       } catch (viewError) {
-        console.warn("Error fetching from user_stats view, falling back to profiles table:", viewError);
+        console.warn(
+          "Error fetching from user_stats view, falling back to profiles table:",
+          viewError
+        );
         // Fall back to profiles table if view has issues
         const result = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .single();
-          
+
         data = result.data;
         error = result.error;
       }
 
       if (error) {
         // If still no profile, create one
-        if (error.code === 'PGRST116') {
+        if (error.code === "PGRST116") {
           console.log("No profile found, creating one");
           const { data: newProfile, error: insertError } = await supabase
             .from("profiles")
@@ -80,14 +83,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               {
                 id: user.id,
                 email: user.email,
-                name: user.user_metadata?.name || '',
-                username: user.user_metadata?.username || '',
-                created_at: new Date()
-              }
+                name: user.user_metadata?.name || "",
+                username: user.user_metadata?.username || "",
+                created_at: new Date(),
+              },
             ])
             .select()
             .single();
-            
+
           if (insertError) throw insertError;
           data = newProfile;
         } else {
@@ -137,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }; 
+  };
   // Register new user
   const register = async (
     name: string,
@@ -148,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       console.log("Starting registration process", { name, username, email });
-      
+
       // 1. Create auth user - simpler approach
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -160,9 +163,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         },
       });
-      
+
       console.log("Auth signup result:", authData?.user?.id);
-      
+
       if (authError) throw authError;
       if (!authData.user) {
         throw new Error("User creation failed");
@@ -170,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Our database trigger will create the profile automatically
       console.log("User created successfully, ID:", authData.user.id);
-      
+
       // Set the user as currentUser for session
       const userProfile: AuthUser = {
         id: authData.user.id,
@@ -184,12 +187,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           collections: 0,
           lists: 0,
           followers: 0,
-          following: 0
-        }
+          following: 0,
+        },
       };
-      
+
+      // Set the user in state
       setCurrentUser(userProfile);
       console.log("Registration complete, user set in context");
+
+      // After setting the user in state, ensure we're fully authenticated by getting the session
+      const { data: sessionData } = await supabase.auth.getSession();
+      console.log("Session after registration:", sessionData);
+
       return;
     } catch (error) {
       console.error("Error during registration:", error);

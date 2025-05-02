@@ -21,7 +21,21 @@ export function Login() {
       setError("");
       setIsLoading(true);
       await login(email, password);
-      navigate("/");
+
+      // Check if the user needs to complete onboarding
+      const { currentUser } = useAuth();
+      const hasCompletedOnboarding =
+        currentUser?.stats &&
+        (currentUser.stats.ratings > 0 ||
+          currentUser.stats.reviews > 0 ||
+          currentUser.stats.collections > 0 ||
+          currentUser.stats.following > 0);
+
+      if (!hasCompletedOnboarding) {
+        navigate("/onboarding");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       setError("Failed to sign in. Please check your credentials.");
     } finally {

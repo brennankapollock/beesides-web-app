@@ -99,7 +99,7 @@ export function OnboardingFlow() {
             <span>
               {currentStepIndex === steps.length - 1 ? 'Finish' : 'Next'}
             </span>
-            <ArrowRightIcon size={18} />
+            {currentStepIndex !== steps.length - 1 && <ArrowRightIcon size={18} />}
           </button>
         </div>
       </main>
