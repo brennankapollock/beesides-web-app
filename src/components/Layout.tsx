@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { MenuIcon, PlusIcon } from "lucide-react";
 import { Navigation } from "./Navigation";
 import { Link } from "./Link";
@@ -6,14 +6,51 @@ import { BottomSheetNavigation } from "./BottomSheetNavigation";
 import { AuthButton } from "./AuthButton";
 import { useAuth } from "../hooks/useAuth";
 import { QuickAddModal } from "./QuickAddModal";
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const { currentUser } = useAuth();
-  // Use the authenticated user or fallback to a default for components that need it
-  const userForNavigation = currentUser || {
-    username: "guest",
-  };
+  const { currentUser, isAuthenticated, loading } = useAuth();
+
+  // Add logging to debug auth state in Layout
+  useEffect(() => {
+    console.log("Layout component - auth state:", {
+      isAuthenticated,
+      isLoading: loading,
+      hasCurrentUser: !!currentUser,
+      userId: currentUser?.id,
+      username: currentUser?.username,
+      email: currentUser?.email,
+      timestamp: new Date().toISOString(),
+    });
+  }, [isAuthenticated, currentUser, loading]);
+
+  // Better handling of navigation user state to prevent "guest" profile
+  const userForNavigation = useMemo(() => {
+    if (loading) {
+      console.log("Auth still loading, using temporary placeholder");
+      // During loading, return null or a special flag to indicate loading state
+      return { username: "", isLoading: true };
+    }
+
+    if (currentUser && isAuthenticated) {
+      console.log(
+        "Using authenticated user for navigation:",
+        currentUser.username
+      );
+      return { ...currentUser, isLoading: false };
+    }
+
+    console.log("No authenticated user, using guest mode");
+    return { username: "guest", isLoading: false };
+  }, [currentUser, isAuthenticated, loading]);
+
+  console.log("Layout rendering with user:", {
+    navigationUsername: userForNavigation.username || "not set",
+    isAuthenticated,
+    isLoading: loading,
+    hasCurrentUser: !!currentUser,
+  });
   const handleQuickAddSubmit = (review: {
     albumId: number;
     rating: number;
@@ -33,7 +70,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             BEESIDES
           </Link>
           <div className="flex gap-4 items-center">
-            {currentUser && (
+            {!loading && currentUser && (
               <button
                 onClick={() => setIsQuickAddOpen(true)}
                 className="p-2 rounded-lg bg-black text-white hover:bg-gray-900 transition-colors"
@@ -59,7 +96,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         onClose={() => setIsMenuOpen(false)}
         currentUser={userForNavigation}
       />
-      <BottomSheetNavigation currentUser={userForNavigation} />
       <QuickAddModal
         isOpen={isQuickAddOpen}
         onClose={() => setIsQuickAddOpen(false)}

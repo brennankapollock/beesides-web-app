@@ -1,11 +1,16 @@
 import React from 'react';
 import { Link } from './Link';
+import { useNavigate } from 'react-router-dom';
 import { HomeIcon, SearchIcon, CompassIcon, UserIcon, XIcon, LibraryIcon, TrendingUpIcon, HeartIcon, SettingsIcon, ListMusicIcon, MessageCircleIcon } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { logger } from '../utils/logger';
+import { SignOutButton } from './SignOutButton';
 interface NavigationProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: {
     username: string;
+    isLoading?: boolean;
   };
 }
 export function Navigation({
@@ -13,21 +18,50 @@ export function Navigation({
   onClose,
   currentUser
 }: NavigationProps) {
-  const links = [{
-    name: 'Home',
-    to: '/',
-    icon: <HomeIcon size={20} />
-  }, {
-    name: 'Discover',
-    to: '/discover',
-    icon: <CompassIcon size={20} />
-  }, {
-    name: 'Search',
-    to: '/search',
-    icon: <SearchIcon size={20} />
-  }, {
+  const navigate = useNavigate();
+  
+  const handleMenuClose = () => {
+    logger.debug("Closing menu", {
+      category: 'navigation',
+      data: { action: 'close_menu' }
+    });
+    onClose();
+  };
+  // Always show profile link in navigation - it will redirect to login if needed
+  const showProfileLink = true;
+  
+  logger.debug("Navigation rendering", {
+    category: 'navigation',
+    data: {
+      username: currentUser.username || "not set",
+      isLoading: !!currentUser.isLoading,
+      showProfileLink
+    }
+  });
+
+  // Base links that are always shown
+  const baseLinks = [
+    {
+      name: 'Home',
+      to: '/',
+      icon: <HomeIcon size={20} />
+    }, 
+    {
+      name: 'Discover',
+      to: '/discover',
+      icon: <CompassIcon size={20} />
+    }, 
+    {
+      name: 'Search',
+      to: '/search',
+      icon: <SearchIcon size={20} />
+    }
+  ];
+  
+  // Add profile link
+  const links = [...baseLinks, {
     name: 'Profile',
-    to: `/profile/${currentUser.username}`,
+    to: '/profile/me', // Use a standard path that will be handled properly
     icon: <UserIcon size={20} />
   }];
   const menuLinks = [{
@@ -85,10 +119,21 @@ export function Navigation({
         </div>
         <div className="border-t px-2 py-3">
           <div className="grid grid-cols-2 gap-2">
-            {menuLinks.map(link => <Link key={link.name} to={link.to} className="flex flex-col items-center gap-1 p-3 hover:bg-gray-100 rounded-xl transition-colors" onClick={onClose}>
+            {/* Regular menu items */}
+            {menuLinks.map(link => (
+              <Link 
+                key={link.name} 
+                to={link.to} 
+                className="flex flex-col items-center gap-1 p-3 hover:bg-gray-100 rounded-xl transition-colors" 
+                onClick={handleMenuClose}
+              >
                 <div className="p-2 bg-gray-100 rounded-full">{link.icon}</div>
                 <span className="text-xs">{link.name}</span>
-              </Link>)}
+              </Link>
+            ))}
+            
+            {/* Sign Out Button */}
+            <SignOutButton onSuccess={handleMenuClose} />
           </div>
         </div>
       </div>
