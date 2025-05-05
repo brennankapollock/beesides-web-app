@@ -87,6 +87,18 @@ export function Profile() {
     }
   }, [isLoading, username, currentUser]);
 
+  // If profileData is null but currentUser is available and not loading, fallback to currentUser (for '/profile/me')
+  useEffect(() => {
+    if (!isLoading && !profileData && username === "me" && currentUser) {
+      setProfileData({
+        ...currentUser,
+        joinDate: `Member since ${new Date(
+          currentUser.created_at || Date.now()
+        ).getFullYear()}`,
+      });
+    }
+  }, [isLoading, profileData, username, currentUser]);
+
   console.log("Profile page - render:", {
     routeUsername: username,
     currentUser: currentUser?.username,
@@ -123,6 +135,8 @@ export function Profile() {
       }
       // If done loading but no user, something is wrong
       else if (!authLoading && !currentUser) {
+        setProfileData(null); // Explicitly clear profileData
+        setLoading(false);
         console.log("No authenticated user found for 'me' path");
       }
     } else if (username === "guest" && !authLoading && !currentUser) {

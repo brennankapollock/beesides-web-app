@@ -3,7 +3,7 @@
  */
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
-type LogCategory = 'auth' | 'api' | 'navigation' | 'user' | 'system';
+type LogCategory = 'auth' | 'api' | 'navigation' | 'user' | 'system' | 'onboarding' | 'database' | 'search' | 'collections' | 'albums' | 'ratings' | 'realtime' | 'activity';
 
 interface LogOptions {
   category: LogCategory;
@@ -39,8 +39,16 @@ const log = (level: LogLevel, message: string, options: LogOptions) => {
     auth: '#4CAF50',     // Green
     api: '#2196F3',      // Blue
     navigation: '#FF9800', // Orange
+    database: '#673AB7',  // Deep Purple
+    search: '#9C27B0',    // Purple
+    collections: '#E91E63', // Pink
+    albums: '#F44336',    // Red
+    ratings: '#FFC107',   // Amber
+    realtime: '#00BCD4',  // Cyan
+    activity: '#8BC34A',  // Light Green
     user: '#9C27B0',     // Purple
-    system: '#607D8B'    // Gray
+    system: '#607D8B',   // Gray
+    onboarding: '#E91E63' // Pink
   };
   
   const categoryTag = `%c[${category.toUpperCase()}]%c`;
