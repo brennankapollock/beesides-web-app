@@ -1,7 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../lib/supabase';
+import { Client, Databases, Query, ID } from 'appwrite';
 import { useAuth } from '../useAuth';
 import { logger } from '../../utils/logger';
+
+// Initialize Appwrite
+const client = new Client()
+  .setEndpoint(import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://nyc.cloud.appwrite.io/v1')
+  .setProject(import.meta.env.VITE_APPWRITE_PROJECT_ID || '681f8b930020ae807d29');
+
+const databases = new Databases(client);
+
+// Database and collection IDs
+const DB_ID = 'default_database';
+const ALBUMS_COLLECTION = 'albums';
+const RATINGS_COLLECTION = 'ratings';
+const ALBUM_ARTISTS_COLLECTION = 'album_artists';
+const ARTISTS_COLLECTION = 'artists';
 
 /**
  * Hook to fetch an album by its ID
@@ -13,18 +27,41 @@ export function useAlbumQuery(albumId: string | number | undefined) {
       if (!albumId) throw new Error("Album ID required");
       
       try {
-        const { data, error } = await supabase
-          .from('albums')
-          .select(`
-            *,
-            artists:album_artists(artist_id, artists(*))
-          `)
-          .eq('id', albumId)
-          .single();
-          
-        if (error) throw error;
+        // Get the album
+        const album = await databases.getDocument(
+          DB_ID,
+          ALBUMS_COLLECTION,
+          albumId.toString()
+        );
         
-        return data;
+        // Get the album artists
+        const albumArtists = await databases.listDocuments(
+          DB_ID,
+          ALBUM_ARTISTS_COLLECTION,
+          [Query.equal('album_id', albumId.toString())]
+        );
+        
+        // Get the artist details for each album artist
+        const artistPromises = albumArtists.documents.map(async (albumArtist) => {
+          const artist = await databases.getDocument(
+            DB_ID,
+            ARTISTS_COLLECTION, 
+            albumArtist.artist_id
+          );
+          
+          return {
+            artist_id: albumArtist.artist_id,
+            artists: artist
+          };
+        });
+        
+        const artists = await Promise.all(artistPromises);
+        
+        // Combine album with artists
+        return {
+          ...album,
+          artists
+        };
       } catch (error) {
         logger.error('Failed to fetch album', {
           category: 'albums',
@@ -53,40 +90,52 @@ export function useAlbumsByGenre(genreName: string | undefined, options?: {
       if (!genreName) throw new Error("Genre name required");
       
       try {
-        let query = supabase
-          .from('album_genres')
-          .select(`
-            albums(*)
-          `)
-          .eq('genre', genreName);
+        // Build the query
+        const queries = [Query.equal('genre', genreName)];
         
-        // Apply limit if provided
-        if (options?.limit) {
-          query = query.limit(options.limit);
-        }
+        // Set up pagination and sorting options
+        const limit = options?.limit || 20;
+        const offset = options?.offset || 0;
         
-        // Apply offset if provided
-        if (options?.offset) {
-          query = query.range(
-            options.offset, 
-            options.offset + (options.limit || 20) - 1
+        // Get albums by genre
+        const albumGenres = await databases.listDocuments(
+          DB_ID,
+          'album_genres',
+          queries
+        );
+        
+        // For each album genre entry, get the full album details
+        const albumPromises = albumGenres.documents.map(async (document) => {
+          return await databases.getDocument(
+            DB_ID,
+            ALBUMS_COLLECTION,
+            document.album_id.toString()
           );
-        }
+        });
         
-        // Apply sorting if provided
+        let albums = await Promise.all(albumPromises);
+        
+        // Apply client-side sorting if needed
         if (options?.sortBy) {
-          query = query.order(
-            `albums.${options.sortBy}`, 
-            { ascending: options.sortDirection !== 'desc' }
-          );
+          const sortKey = options.sortBy;
+          albums = albums.sort((a, b) => {
+            const fieldA = a[sortKey];
+            const fieldB = b[sortKey];
+            
+            if (options.sortDirection === 'desc') {
+              return fieldA > fieldB ? -1 : 1;
+            } else {
+              return fieldA < fieldB ? -1 : 1;
+            }
+          });
         }
         
-        const { data, error } = await query;
+        // Apply pagination
+        if (offset > 0 || limit < albums.length) {
+          albums = albums.slice(offset, offset + limit);
+        }
         
-        if (error) throw error;
-        
-        // Extract albums from the nested structure
-        return data.map(item => item.albums);
+        return albums;
       } catch (error) {
         logger.error('Failed to fetch albums by genre', {
           category: 'albums',
@@ -110,17 +159,38 @@ export function useUserRatings(userId: string | undefined) {
       if (!userId) throw new Error("User ID required");
       
       try {
-        const { data, error } = await supabase
-          .from('album_ratings')
-          .select(`
-            *,
-            albums(*)
-          `)
-          .eq('user_id', userId);
-          
-        if (error) throw error;
+        // Get all ratings for this user
+        const ratingsResult = await databases.listDocuments(
+          DB_ID,
+          RATINGS_COLLECTION,
+          [Query.equal('user_id', userId)]
+        );
         
-        return data;
+        // For each rating, get the album details
+        const ratingsWithAlbums = await Promise.all(
+          ratingsResult.documents.map(async (rating) => {
+            try {
+              const album = await databases.getDocument(
+                DB_ID,
+                ALBUMS_COLLECTION,
+                rating.album_id
+              );
+              
+              return {
+                ...rating,
+                albums: album
+              };
+            } catch (error) {
+              logger.error('Failed to fetch album for rating', {
+                category: 'ratings',
+                data: { error, ratingId: rating.$id, albumId: rating.album_id }
+              });
+              return rating; // Return rating without album if album fetch fails
+            }
+          })
+        );
+        
+        return ratingsWithAlbums;
       } catch (error) {
         logger.error('Failed to fetch user ratings', {
           category: 'ratings',
@@ -146,53 +216,60 @@ export function useRateAlbum() {
       albumId, 
       rating 
     }: { 
-      albumId: number; 
+      albumId: number | string; 
       rating: number;
     }) => {
       if (!currentUser?.id) throw new Error("User ID required");
       
       try {
         // Check if rating already exists
-        const { data: existingRating, error: checkError } = await supabase
-          .from('album_ratings')
-          .select()
-          .eq('user_id', currentUser.id)
-          .eq('album_id', albumId)
-          .maybeSingle();
-          
-        if (checkError) throw checkError;
+        const existingRatings = await databases.listDocuments(
+          DB_ID,
+          RATINGS_COLLECTION,
+          [
+            Query.equal('user_id', currentUser.id),
+            Query.equal('album_id', albumId.toString())
+          ]
+        );
         
         let result;
+        const now = new Date().toISOString();
         
-        if (existingRating) {
+        if (existingRatings.documents.length > 0) {
           // Update existing rating
-          result = await supabase
-            .from('album_ratings')
-            .update({ rating, updated_at: new Date().toISOString() })
-            .eq('id', existingRating.id)
-            .select();
+          const existingRating = existingRatings.documents[0];
+          
+          result = await databases.updateDocument(
+            DB_ID,
+            RATINGS_COLLECTION,
+            existingRating.$id,
+            {
+              rating,
+              updated_at: now
+            }
+          );
         } else {
           // Create new rating
-          result = await supabase
-            .from('album_ratings')
-            .insert({
+          result = await databases.createDocument(
+            DB_ID,
+            RATINGS_COLLECTION,
+            ID.unique(),
+            {
               user_id: currentUser.id,
-              album_id: albumId,
+              album_id: albumId.toString(),
               rating,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .select();
+              created_at: now,
+              updated_at: now
+            }
+          );
         }
-        
-        if (result.error) throw result.error;
         
         logger.info('Album rating saved', {
           category: 'ratings',
           data: { albumId, rating }
         });
         
-        return result.data?.[0];
+        return result;
       } catch (error) {
         logger.error('Failed to save album rating', {
           category: 'ratings',
@@ -220,17 +297,42 @@ export function useUserCollections(userId: string | undefined) {
       if (!userId) throw new Error("User ID required");
       
       try {
-        const { data, error } = await supabase
-          .from('collections')
-          .select(`
-            *,
-            album_count:albums(count)
-          `)
-          .eq('user_id', userId);
-          
-        if (error) throw error;
+        // Get all collections for this user
+        const collectionsResult = await databases.listDocuments(
+          DB_ID,
+          'collections',
+          [Query.equal('user_id', userId)]
+        );
         
-        return data;
+        // For each collection, count the number of albums in it
+        const collectionsWithCounts = await Promise.all(
+          collectionsResult.documents.map(async (collection) => {
+            try {
+              // Count albums in this collection
+              const albumsCount = await databases.listDocuments(
+                DB_ID,
+                'collection_albums',
+                [Query.equal('collection_id', collection.$id)]
+              );
+              
+              return {
+                ...collection,
+                album_count: albumsCount.total
+              };
+            } catch (error) {
+              logger.error('Failed to fetch album count for collection', {
+                category: 'collections',
+                data: { error, collectionId: collection.$id }
+              });
+              return {
+                ...collection,
+                album_count: 0
+              };
+            }
+          })
+        );
+        
+        return collectionsWithCounts;
       } catch (error) {
         logger.error('Failed to fetch user collections', {
           category: 'collections',
@@ -264,26 +366,28 @@ export function useCreateCollection() {
       if (!currentUser?.id) throw new Error("User ID required");
       
       try {
-        const { data, error } = await supabase
-          .from('collections')
-          .insert({
+        const now = new Date().toISOString();
+        
+        const collection = await databases.createDocument(
+          DB_ID,
+          'collections',
+          ID.unique(),
+          {
             name,
-            description,
+            description: description || '',
             is_private: isPrivate,
             user_id: currentUser.id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select();
+            created_at: now,
+            updated_at: now
+          }
+        );
           
-        if (error) throw error;
-        
         logger.info('Collection created', {
           category: 'collections',
           data: { name, isPrivate }
         });
         
-        return data[0];
+        return collection;
       } catch (error) {
         logger.error('Failed to create collection', {
           category: 'collections',
@@ -312,22 +416,24 @@ export function useAddAlbumToCollection() {
       collectionId, 
       albumId 
     }: { 
-      collectionId: number; 
-      albumId: number;
+      collectionId: string | number; 
+      albumId: string | number;
     }) => {
       try {
-        const { data, error } = await supabase
-          .from('collection_albums')
-          .insert({
-            collection_id: collectionId,
-            album_id: albumId,
-            added_at: new Date().toISOString()
-          })
-          .select();
-          
-        if (error) throw error;
+        const now = new Date().toISOString();
         
-        return data[0];
+        const collectionAlbum = await databases.createDocument(
+          DB_ID,
+          'collection_albums',
+          ID.unique(),
+          {
+            collection_id: collectionId.toString(),
+            album_id: albumId.toString(),
+            added_at: now
+          }
+        );
+          
+        return collectionAlbum;
       } catch (error) {
         logger.error('Failed to add album to collection', {
           category: 'collections',
