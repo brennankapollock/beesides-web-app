@@ -1,7 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../useAuth';
 import { logger } from '../../utils/logger';
+import { Client, Databases, Query } from 'appwrite';
+
+// Initialize Appwrite
+const client = new Client()
+  .setEndpoint(import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://nyc.cloud.appwrite.io/v1')
+  .setProject(import.meta.env.VITE_APPWRITE_PROJECT_ID || '681f8b930020ae807d29');
+
+const databases = new Databases(client);
+// Database and collection IDs
+const DB_ID = 'default_database';
+const USERS_COLLECTION = 'users';
 
 /**
  * Hook to fetch user profile data
@@ -13,29 +23,20 @@ export function useUserProfile(username: string | undefined) {
       if (!username) throw new Error("Username required");
       
       try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select(`
-            id,
-            username,
-            display_name,
-            avatar_url,
-            bio,
-            website,
-            location,
-            preferences,
-            created_at,
-            updated_at
-          `)
-          .eq('username', username)
-          .single();
-          
-        if (error) throw error;
+        const response = await databases.listDocuments(
+          DB_ID,
+          USERS_COLLECTION,
+          [Query.equal("username", username), Query.limit(1)]
+        );
         
-        return data;
+        if (response.documents.length === 0) {
+          throw new Error(`User ${username} not found`);
+        }
+        
+        return response.documents[0];
       } catch (error) {
         logger.error('Failed to fetch user profile', {
-          category: 'users',
+          category: 'user',
           data: { error, username }
         });
         throw error;
@@ -56,49 +57,49 @@ export function useUserStats(userId: string | undefined) {
       if (!userId) throw new Error("User ID required");
       
       try {
-        const { data: ratingsData, error: ratingsError } = await supabase
-          .from('album_ratings')
-          .select('count')
-          .eq('user_id', userId)
-          .single();
-          
-        if (ratingsError) throw ratingsError;
+        // Get ratings count
+        const ratingsResponse = await databases.listDocuments(
+          DB_ID,
+          'ratings',
+          [Query.equal("user_id", userId)]
+        );
+        const ratingsCount = ratingsResponse.total;
         
-        const { data: collectionsData, error: collectionsError } = await supabase
-          .from('collections')
-          .select('count')
-          .eq('user_id', userId)
-          .single();
-          
-        if (collectionsError) throw collectionsError;
+        // Get collections count
+        const collectionsResponse = await databases.listDocuments(
+          DB_ID,
+          'collections',
+          [Query.equal("user_id", userId)]
+        );
+        const collectionsCount = collectionsResponse.total;
         
-        const { data: reviewsData, error: reviewsError } = await supabase
-          .from('reviews')
-          .select('count')
-          .eq('user_id', userId)
-          .single();
-          
-        if (reviewsError) throw reviewsError;
+        // Get reviews count
+        const reviewsResponse = await databases.listDocuments(
+          DB_ID,
+          'reviews',
+          [Query.equal("user_id", userId)]
+        );
+        const reviewsCount = reviewsResponse.total;
         
-        const { data: followersData, error: followersError } = await supabase
-          .from('followers')
-          .select('count')
-          .eq('following_id', userId)
-          .single();
-          
-        if (followersError) throw followersError;
+        // Get followers count
+        const followersResponse = await databases.listDocuments(
+          DB_ID,
+          'followers',
+          [Query.equal("following_id", userId)]
+        );
+        const followersCount = followersResponse.total;
         
-        const { data: followingData, error: followingError } = await supabase
-          .from('followers')
-          .select('count')
-          .eq('follower_id', userId)
-          .single();
-          
-        if (followingError) throw followingError;
+        // Get following count
+        const followingResponse = await databases.listDocuments(
+          DB_ID,
+          'followers',
+          [Query.equal("follower_id", userId)]
+        );
+        const followingCount = followingResponse.total;
         
         return {
-          ratings: ratingsData.count,
-          collections: collectionsData.count,
+          ratings: ratingsCount,
+          collections: collectionsCount,
           reviews: reviewsData.count,
           followers: followersData.count,
           following: followingData.count

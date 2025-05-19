@@ -2,33 +2,36 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { GenreSelection } from "../components/onboarding/GenreSelection";
 import { ArtistSelection } from "../components/onboarding/ArtistSelection";
-import { InitialRatings } from "../components/onboarding/InitialRatings";
 import { RymImport } from "../components/onboarding/RymImport";
-import { FollowSuggestions } from "../components/onboarding/FollowSuggestions";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { logger } from "../utils/logger";
+import { toast } from "react-hot-toast";
 import {
   useOnboardingProgress,
   useUpdateOnboardingStep,
   useCompleteOnboarding,
   OnboardingProgress,
 } from "../hooks/queries/useOnboardingQueries";
+import { useCurrentUserProfile } from "../hooks/useAppwriteProfile";
 
 // Define the types of steps in the onboarding flow
-type Step = "genres" | "artists" | "ratings" | "rym" | "follow";
+type Step = "genres" | "artists" | "rym";
 
 export function OnboardingFlow() {
-  // Current step in the flow
+  // Ensure user profile exists
+  const { loading: profileLoading } = useCurrentUserProfile();
+  // Current step in the flow - start with genres
   const [currentStep, setCurrentStep] = useState<Step>("genres");
 
   // Progress data across all steps
   const [progress, setProgress] = useState<OnboardingProgress>({
     genres: [],
     artists: [],
-    ratings: [],
-    following: [],
   });
+
+  // Track if user is new from registration
+  const [isNewUser, setIsNewUser] = useState<boolean>(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,7 +39,7 @@ export function OnboardingFlow() {
 
   // Define the steps and their order using useMemo
   const steps = useMemo<Step[]>(
-    () => ["genres", "artists", "ratings", "rym", "follow"],
+    () => ["genres", "artists", "rym"],
     []
   );
   const currentStepIndex = steps.indexOf(currentStep);
@@ -45,58 +48,113 @@ export function OnboardingFlow() {
   const stepTitles = {
     genres: "What kind of music do you like?",
     artists: "Select some artists you enjoy",
-    ratings: "Rate some albums to get started",
     rym: "Import your RateYourMusic data",
-    follow: "Follow some music enthusiasts",
   };
 
   // Setup React Query hooks
-  const { data: onboardingData, isLoading, error } = useOnboardingProgress();
+  const { data: onboardingData, isLoading: onboardingLoading, error } = useOnboardingProgress();
+  
+  // Combined loading state
+  const isLoading = profileLoading || onboardingLoading;
 
   const { mutate: updateStep } = useUpdateOnboardingStep();
   const { mutate: completeOnboarding } = useCompleteOnboarding();
 
-  // Log when component mounts
+  // Check if user is coming from registration and handle onboarding accordingly
   useEffect(() => {
+    const fromRegistration =
+      sessionStorage.getItem("registration_complete") === "true";
+    const needsOnboarding =
+      sessionStorage.getItem("needs_onboarding") === "true";
+    const fromParam = new URLSearchParams(location.search).get("from");
+
+    console.log("OnboardingFlow checking registration status:", {
+      fromRegistration,
+      needsOnboarding,
+      fromParam,
+      sessionStorageKeys: Object.keys(sessionStorage),
+      pathname: location.pathname,
+      search: location.search,
+      userId: currentUser?.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    // More robust check for new users coming from registration
+    const isFromRegistration =
+      fromRegistration || fromParam === "signup" || needsOnboarding;
+
+    if (isFromRegistration) {
+      console.log(
+        "User is coming from registration, starting onboarding from first step",
+        { isFromRegistration, timestamp: new Date().toISOString() }
+      );
+
+      // Start from the first step for new users
+      setCurrentStep("genres");
+      setIsNewUser(true);
+
+      // Reset progress data for new users
+      setProgress({
+        genres: [],
+        artists: [],
+        rymImported: false,
+      });
+
+      // Don't remove the registration_complete flag until onboarding is fully complete
+      // This ensures that if the user refreshes during onboarding, they'll still be recognized as a new user
+      // We'll remove it in the completeOnboarding function instead
+    }
+
     logger.debug("OnboardingFlow component mounted", {
       category: "onboarding",
       data: {
         userId: currentUser?.id,
         username: currentUser?.username,
+        fromRegistration,
+        needsOnboarding,
+        fromParam,
+        isNewUser:
+          fromRegistration || (fromParam === "signup" && needsOnboarding),
         queryParams: Object.fromEntries(
           new URLSearchParams(location.search).entries()
         ),
         timestamp: new Date().toISOString(),
       },
     });
-  }, [currentUser?.id, currentUser?.username, location.search]);
+  }, [
+    currentUser?.id,
+    currentUser?.username,
+    location.search,
+    location.pathname,
+  ]);
 
   // Initialize onboarding progress from query data
   useEffect(() => {
     if (onboardingData) {
-      // Restore progress data
-      setProgress({
-        genres: onboardingData.genres || [],
-        artists: onboardingData.artists || [],
-        ratings: onboardingData.ratings || [],
-        following: onboardingData.following || [],
-        rymImported: onboardingData.rymImported,
-      });
+      // Don't restore progress if this is a new user from registration
+      if (!isNewUser) {
+        // Restore progress data
+        setProgress({
+          genres: onboardingData.genres || [],
+          artists: onboardingData.artists || [],
+          rymImported: onboardingData.rymImported,
+        });
 
-      // Go to the next step after the last completed one
-      if (
-        "lastCompletedStep" in onboardingData &&
-        onboardingData.lastCompletedStep
-      ) {
-        const lastStepIndex = steps.indexOf(
-          onboardingData.lastCompletedStep as Step
-        );
-        if (lastStepIndex >= 0 && lastStepIndex < steps.length - 1) {
-          setCurrentStep(steps[lastStepIndex + 1]);
+        // Go to the next step after the last completed one
+        if (
+          "lastCompletedStep" in onboardingData &&
+          onboardingData.lastCompletedStep
+        ) {
+          const lastStepIndex = steps.indexOf(
+            onboardingData.lastCompletedStep as Step
+          );
+          if (lastStepIndex >= 0 && lastStepIndex < steps.length - 1) {
+            setCurrentStep(steps[lastStepIndex + 1]);
+          }
         }
       }
     }
-  }, [onboardingData, steps]);
+  }, [onboardingData, steps, isNewUser]);
 
   // Log when step changes
   useEffect(() => {
@@ -134,7 +192,11 @@ export function OnboardingFlow() {
       } else if (step === "artists" && Array.isArray(data)) {
         updatedProgress.artists = data as string[];
       } else if (step === "ratings" && Array.isArray(data)) {
-        updatedProgress.ratings = data as Array<{ id: number; rating: number }>;
+        // Handle both number and string IDs
+        updatedProgress.ratings = data.map((item) => ({
+          id: typeof item.id === "string" ? parseInt(item.id, 10) : item.id,
+          rating: item.rating,
+        }));
       } else if (step === "follow" && Array.isArray(data)) {
         updatedProgress.following = data as string[];
       } else if (step === "rym" && typeof data === "boolean") {
@@ -147,72 +209,91 @@ export function OnboardingFlow() {
 
   // Save current step progress and move to the next step
   const handleNext = async () => {
-    const nextIndex = currentStepIndex + 1;
+    if (!currentUser) {
+      logger.error("Cannot proceed with onboarding - user not authenticated", {
+        category: "onboarding",
+      });
+      toast.error("Please sign in to continue with onboarding");
+      navigate("/login?redirect=/onboarding");
+      return;
+    }
 
-    // First update the step data in the database
-    updateStep({
-      step: currentStep,
-      data:
-        currentStep === "genres"
-          ? progress.genres
-          : currentStep === "artists"
-          ? progress.artists
-          : currentStep === "ratings"
-          ? progress.ratings
-          : currentStep === "rym"
-          ? progress.rymImported
-          : progress.following,
+    // Log the current step and progress
+    logger.debug(`Saving progress for step: ${currentStep}`, {
+      category: "onboarding",
+      data: {
+        step: currentStep,
+        progressData: progress,
+        userId: currentUser?.id,
+      },
     });
 
-    if (nextIndex < steps.length) {
-      logger.info("Moving to next onboarding step", {
-        category: "onboarding",
-        data: {
-          currentStep,
-          nextStep: steps[nextIndex],
-          progress: {
-            genresCount: progress.genres.length,
-            artistsCount: progress.artists.length,
-            ratingsCount: progress.ratings.length,
-            followingCount: progress.following.length,
-          },
-        },
-      });
+    const nextIndex = currentStepIndex + 1;
 
-      setCurrentStep(steps[nextIndex]);
-    } else {
-      // Onboarding complete - save all data to database
-      logger.info("Onboarding complete, saving all preferences", {
+    // If this is the last step, complete the onboarding
+    if (nextIndex >= steps.length) {
+      logger.info("Completing onboarding process", {
         category: "onboarding",
         data: {
-          finalProgress: {
-            genresSelected: progress.genres.length,
-            artistsSelected: progress.artists.length,
-            ratingsAdded: progress.ratings.length,
-            followingAdded: progress.following.length,
-          },
           userId: currentUser?.id,
+          username: currentUser?.username,
         },
       });
 
-      // Complete onboarding with all data
+      // Call the completeOnboarding mutation
       completeOnboarding(
         { progress },
         {
           onSuccess: () => {
-            // Navigate to discover page
-            navigate("/discover");
+            // Clear the registration flags from session storage
+            sessionStorage.removeItem("registration_complete");
+            sessionStorage.removeItem("needs_onboarding");
+
+            logger.info("Onboarding completed successfully", {
+              category: "onboarding",
+              data: { userId: currentUser?.id },
+            });
+
+            toast.success("Profile setup complete!");
+            navigate("/"); // Navigate to home page
           },
-          onError: () => {
-            // Show error message
-            alert(
-              "There was a problem saving your preferences. Please try again."
-            );
+          onError: (error) => {
+            logger.error("Failed to complete onboarding", {
+              category: "onboarding",
+              data: { error: error.message },
+            });
+            toast.error("Failed to save your preferences. Please try again.");
           },
         }
       );
+      return;
     }
-  };
+
+    // Otherwise, update the current step progress and move to the next step
+    updateStep(
+      {
+        step: currentStep,
+        data: progress[currentStep as keyof typeof progress],
+      },
+      {
+        onSuccess: () => {
+          logger.debug(`Progress saved for step: ${currentStep}`, {
+            category: "onboarding",
+          });
+          // Move to the next step
+          const nextStep = steps[nextIndex];
+          setCurrentStep(nextStep);
+        },
+        onError: (error) => {
+          logger.error(`Failed to save progress for step: ${currentStep}`, {
+            category: "onboarding",
+            data: { error: error.message },
+          });
+          toast.error("Failed to save your progress. Please try again.");
+        },
+      }
+    );
+  }
 
   // Go back to previous step
   const handleBack = () => {
@@ -229,22 +310,14 @@ export function OnboardingFlow() {
     }
   };
 
-  // Display loading indicator while fetching initial data
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-lg font-medium">
-            Loading your onboarding progress...
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Check if user is coming from registration
+  const isFromRegistration = 
+    sessionStorage.getItem("registration_complete") === "true" ||
+    sessionStorage.getItem("needs_onboarding") === "true" ||
+    new URLSearchParams(location.search).get("from") === "signup";
 
-  // Show error state
-  if (error) {
+  // Show error state, but bypass for new users from registration
+  if (error && !isFromRegistration) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="max-w-md text-center">
@@ -265,6 +338,9 @@ export function OnboardingFlow() {
       </div>
     );
   }
+  
+  // For new users from registration with API errors, we'll continue with empty data
+  // This prevents the error screen from showing when a new user registers
 
   // Render the current step component
   const renderStep = () => {
@@ -274,8 +350,6 @@ export function OnboardingFlow() {
         progressData: {
           genresCount: progress.genres.length,
           artistsCount: progress.artists.length,
-          ratingsCount: progress.ratings.length,
-          followingCount: progress.following.length,
         },
         userId: currentUser?.id,
       },
@@ -297,28 +371,10 @@ export function OnboardingFlow() {
             selectedGenres={progress.genres}
           />
         );
-      case "ratings":
-        return (
-          <InitialRatings
-            ratings={progress.ratings}
-            onUpdate={(ratings) => updateProgress("ratings", ratings)}
-            selectedGenres={progress.genres}
-            selectedArtists={progress.artists}
-          />
-        );
+
       case "rym":
         return <RymImport />;
-      case "follow":
-        return (
-          <FollowSuggestions
-            following={progress.following}
-            onUpdate={(following: string[]) =>
-              updateProgress("follow", following)
-            }
-            selectedGenres={progress.genres}
-            selectedArtists={progress.artists}
-          />
-        );
+
       default:
         return <div>Unknown step</div>;
     }
@@ -345,7 +401,13 @@ export function OnboardingFlow() {
             {stepTitles[currentStep]}
           </h2>
 
-          {renderStep()}
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+            </div>
+          ) : (
+            renderStep()
+          )}
         </div>
       </main>
 

@@ -5,22 +5,21 @@ import { EyeIcon, EyeOffIcon, CheckIcon } from "lucide-react";
 
 export function Register() {
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
+  const { signUp, signInWithGoogle } = useAuth(); // Get both signUp and signInWithGoogle
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted", { name, username, email });
+    console.log("Form submitted", { name, email }); // Removed username
 
     // Validate form fields
-    if (!name || !username || !email || !password) {
+    if (!name || !email || !password) {
       setError("Please fill in all fields");
       return;
     }
@@ -36,19 +35,36 @@ export function Register() {
     try {
       setError("");
       setIsLoading(true);
-      console.log("Calling register function...");
+      console.log("Calling signUp function..."); // Changed from register to signUp
 
-      // Call register function from AuthContext
-      await register(name, username, email, password);
-
-      console.log("Registration successful, redirecting to onboarding");
-
-      // Store a flag indicating this user needs onboarding
+      // Make sure these flags are set before signup to ensure they're available in any case
       sessionStorage.setItem("needs_onboarding", "true");
+      sessionStorage.setItem("registration_complete", "true");
+
+      // Call signUp function from AuthContext which handles both registration and sign-in
+      const user = await signUp({ name, email, password }); // This already signs in the user
+
+      console.log("Registration successful, user signed in, redirecting to onboarding", user);
+
+      // Make sure the flags are still set after authentication completes
+      sessionStorage.setItem("needs_onboarding", "true");
+      sessionStorage.setItem("registration_complete", "true");
 
       // Navigate with a query parameter to indicate we're coming from signup
-      console.log("Navigating to onboarding flow...");
-      navigate("/onboarding?from=signup", { replace: true });
+      const onboardingUrl = "/onboarding?from=signup";
+      console.log("Navigating to onboarding flow...", {
+        url: onboardingUrl,
+        flags: {
+          needs_onboarding: sessionStorage.getItem("needs_onboarding"),
+          registration_complete: sessionStorage.getItem(
+            "registration_complete"
+          ),
+        },
+        user,
+      });
+
+      // Use replace: true to prevent going back to register page
+      navigate(onboardingUrl, { replace: true });
     } catch (error: unknown) {
       console.error("Registration error:", error);
 
@@ -56,11 +72,10 @@ export function Register() {
       if (error instanceof Error) {
         if (
           error.message.includes("already registered") ||
-          error.message.includes("User already registered")
+          error.message.includes("User already registered") ||
+          error.message.includes("A user with the same email already exists") // Added Appwrite specific error
         ) {
           setError("This email is already registered");
-        } else if (error.message.includes("duplicate key")) {
-          setError("This username is already taken");
         } else {
           setError(error.message);
         }
@@ -143,25 +158,6 @@ export function Register() {
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
                 placeholder="John Doe"
-                required
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium mb-1"
-              >
-                Username
-              </label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) =>
-                  setUsername(e.target.value.toLowerCase().replace(/\s+/g, ""))
-                }
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                placeholder="johndoe"
                 required
               />
             </div>
@@ -295,7 +291,27 @@ export function Register() {
               </div>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <button className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors">
+              <button 
+                type="button" 
+                onClick={async () => {
+                  try {
+                    setError("");
+                    setIsLoading(true);
+                    await signInWithGoogle();
+                    // The redirect to Google will happen, and AuthCallback will handle the return
+                  } catch (err) {
+                    console.error("Google sign-in error:", err);
+                    if (err instanceof Error) {
+                      setError(err.message || "Failed to sign in with Google.");
+                    } else {
+                      setError("Failed to sign in with Google.");
+                    }
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              >
                 <span className="sr-only">Sign up with Google</span>
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path
@@ -304,7 +320,12 @@ export function Register() {
                   />
                 </svg>
               </button>
-              <button className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors">
+              <button 
+                type="button" 
+                className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors opacity-50 cursor-not-allowed"
+                disabled
+                title="Apple Sign In coming soon"
+              >
                 <span className="sr-only">Sign up with Apple</span>
                 <svg
                   className="h-5 w-5"

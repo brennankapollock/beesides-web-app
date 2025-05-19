@@ -6,8 +6,10 @@ import { ViewToggle } from "../components/ViewToggle";
 import { useViewMode } from "../hooks/useViewMode";
 import { CreateCollectionModal } from "../components/CreateCollectionModal";
 import { useAuth } from "../hooks/useAuth";
-import { supabase } from "../lib/supabase";
 import { useParams, Link } from "react-router-dom";
+import { useAppwriteCollections } from "../hooks/useAppwriteCollections";
+import { useUserRatedAlbums } from "../hooks/useAppwriteAlbums";
+import { useAppwriteProfile, AppwriteUser } from "../hooks/useAppwriteProfile";
 // Icons import
 import {
   Edit as EditIcon,
@@ -224,39 +226,26 @@ export function Profile() {
             ).getFullYear()}`,
           });
         } else if (username && username !== "me" && username !== "guest") {
-          // Otherwise, fetch the profile based on the username in the URL
-          console.log("Fetching profile data from database for:", username);
-          const { data, error } = await supabase
-            .from("user_stats")
-            .select("*")
-            .eq("username", username)
-            .single();
+          // Otherwise, fetch the profile based on the username in the URL using our appwrite profile service
+          console.log("Fetching profile data from Appwrite for:", username);
+          try {
+            const { fetchUserProfileByUsername } = await import(
+              "../hooks/useAppwriteProfile"
+            );
+            const userData = await fetchUserProfileByUsername(username);
 
-          if (error) {
+            if (userData) {
+              console.log(
+                "Profile data fetched successfully:",
+                userData.username
+              );
+              setProfileData(userData);
+            } else {
+              console.log("No profile data found for username:", username);
+            }
+          } catch (error) {
             console.error("Error fetching profile data:", error);
             throw error;
-          }
-
-          if (data) {
-            console.log("Profile data fetched successfully:", data.username);
-            setProfileData({
-              name: data.name,
-              username: data.username,
-              avatar: data.avatar_url,
-              joinDate: `Member since ${new Date(
-                data.created_at || Date.now()
-              ).getFullYear()}`,
-              bio: data.bio || "No bio available",
-              stats: {
-                ratings: data.ratings_count || 0,
-                reviews: data.reviews_count || 0,
-                lists: data.collections_count || 0,
-                followers: data.followers_count || 0,
-                following: data.following_count || 0,
-              },
-            });
-          } else {
-            console.log("No profile data found for username:", username);
           }
         } else {
           console.log("Invalid username or path, skipping fetch:", username);
@@ -283,130 +272,32 @@ export function Profile() {
   const [loadingAlbums, setLoadingAlbums] = useState(true);
   const [loadingCollections, setLoadingCollections] = useState(true);
 
-  // Fetch user's rated albums
+  // Fetch user's rated albums using our custom hook
+  const { albums: userRatedAlbums, loading: userRatedAlbumsLoading } =
+    useUserRatedAlbums(profileData?.id);
+
+  // Update local state when rated albums change
   useEffect(() => {
-    const fetchUserRatedAlbums = async () => {
-      if (!user.username) return;
+    if (userRatedAlbums) {
+      setAlbums(userRatedAlbums);
+      setLoadingAlbums(userRatedAlbumsLoading);
+    }
+  }, [userRatedAlbums, userRatedAlbumsLoading]);
 
-      try {
-        setLoadingAlbums(true);
+  // Use Appwrite collections hook to fetch and manage collections
+  const {
+    collections: appwriteCollections,
+    loading: appwriteCollectionsLoading,
+    createCollection: createAppwriteCollection,
+  } = useAppwriteCollections(user.username);
 
-        // Get albums this user has rated
-        const { data, error } = await supabase
-          .from("ratings")
-          .select(
-            `
-            album_id,
-            rating,
-            albums!inner(
-              id,
-              title,
-              cover_url,
-              release_date,
-              artists!inner(name)
-            )
-          `
-          )
-          .eq("user_id", profileData?.id)
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (error) throw error;
-
-        if (data) {
-          // Transform the data to match our component requirements
-          const formattedAlbums = data.map((item) => {
-            // Define explicit types for the data structure
-            type AlbumData = {
-              id?: string;
-              title?: string;
-              cover_url?: string;
-              release_date?: string;
-              artists?: Array<{ name?: string }> | { name?: string };
-            };
-
-            // Handle albums as either an object or array
-            const albumData: AlbumData = Array.isArray(item.albums)
-              ? item.albums[0] || {}
-              : item.albums || {};
-
-            // Extract artist name with proper type handling
-            let artistName = "";
-            if (albumData.artists) {
-              if (
-                Array.isArray(albumData.artists) &&
-                albumData.artists.length > 0
-              ) {
-                artistName = albumData.artists[0]?.name || "";
-              } else if (
-                typeof albumData.artists === "object" &&
-                "name" in albumData.artists
-              ) {
-                artistName = albumData.artists.name || "";
-              }
-            }
-
-            return {
-              id: item.album_id,
-              title: albumData.title || "",
-              artist: artistName,
-              cover: albumData.cover_url || "",
-              rating: item.rating || 0,
-              releaseDate: albumData.release_date
-                ? new Date(albumData.release_date).getFullYear().toString()
-                : "",
-            };
-          });
-
-          setAlbums(formattedAlbums);
-        }
-      } catch (error) {
-        console.error("Error fetching user albums:", error);
-      } finally {
-        setLoadingAlbums(false);
-      }
-    };
-
-    fetchUserRatedAlbums();
-  }, [user.username, profileData?.id]);
-
-  // Fetch user's collections
+  // Update local state when appwrite collections change
   useEffect(() => {
-    const fetchUserCollections = async () => {
-      if (!user.username) return;
-
-      try {
-        setLoadingCollections(true);
-
-        // Get collections from our collection_details view
-        const { data, error } = await supabase
-          .from("collection_details")
-          .select("*")
-          .eq("user_username", user.username)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-
-        if (data) {
-          // Transform the data to match our component requirements
-          const formattedCollections = data.map((collection) => ({
-            id: collection.id,
-            title: collection.name,
-            itemCount: collection.album_count,
-            coverImages: collection.cover_images?.slice(0, 3) || [],
-          }));
-
-          setCollections(formattedCollections);
-        }
-      } catch (error) {
-        console.error("Error fetching collections:", error);
-      } finally {
-        setLoadingCollections(false);
-      }
-    };
-
-    fetchUserCollections();
-  }, [user.username]);
+    if (appwriteCollections) {
+      setCollections(appwriteCollections);
+      setLoadingCollections(appwriteCollectionsLoading);
+    }
+  }, [appwriteCollections, appwriteCollectionsLoading]);
   const handleCreateCollection = async (collection: {
     name: string;
     description: string;
@@ -419,46 +310,12 @@ export function Profile() {
         return;
       }
 
-      // Create the collection in Supabase
-      const { data: collectionData, error: collectionError } = await supabase
-        .from("collections")
-        .insert({
-          user_id: currentUser.id,
-          name: collection.name,
-          description: collection.description,
-          is_private: collection.isPrivate,
-        })
-        .select();
-
-      if (collectionError) throw collectionError;
-
-      // Add albums to the collection
-      if (
-        collection.albums.length > 0 &&
-        collectionData &&
-        collectionData[0]?.id
-      ) {
-        const collectionAlbums = collection.albums.map((album) => ({
-          collection_id: collectionData[0].id,
-          album_id: String(album.id), // Ensure album_id is a string
-        }));
-
-        const { error: albumsError } = await supabase
-          .from("collection_albums")
-          .insert(collectionAlbums);
-
-        if (albumsError) throw albumsError;
-      }
-
-      // Add the new collection to our local state
-      const newCollection = {
-        id: collectionData && collectionData[0] ? collectionData[0].id : "",
-        title: collection.name,
-        itemCount: collection.albums.length,
-        coverImages: collection.albums.slice(0, 3).map((album) => album.cover),
-      };
-
-      setCollections((prev) => [newCollection, ...prev]);
+      // Use the createCollection function from our custom hook
+      await createAppwriteCollection({
+        ...collection,
+        userId: currentUser.id,
+        username: currentUser.username || "",
+      });
 
       // Show success message
       alert("Collection created successfully!");

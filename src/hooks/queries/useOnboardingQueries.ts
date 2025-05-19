@@ -1,14 +1,37 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../lib/supabase';
 import { useAuth } from '../useAuth';
 import { logger } from '../../utils/logger';
+import { account } from '../../lib/appwrite';
+import { fetchUserProfileByUserId, updateUserProfile } from '../useAppwriteProfile';
+
+// Helper function to get authorization headers
+// Exported for potential future use in API calls
+export async function getAuthHeaders(): Promise<HeadersInit> {
+  try {
+    const jwt = await account.createJWT();
+    return {
+      'Authorization': `Bearer ${jwt.jwt}`,
+      'Content-Type': 'application/json'
+    };
+  } catch (error) {
+    logger.error("Failed to create JWT for API auth", { 
+      category: "auth", 
+      data: { error: error instanceof Error ? error.message : String(error) }
+    });
+    return {
+      'Content-Type': 'application/json'
+    };
+  }
+}
 
 export interface OnboardingProgress {
   genres: string[];
   artists: string[];
-  ratings: Array<{ id: number; rating: number }>;
-  following: string[];
   rymImported?: boolean;
+}
+
+export interface FullOnboardingProgress extends OnboardingProgress {
+  lastCompletedStep?: string;
 }
 
 /**
@@ -17,46 +40,82 @@ export interface OnboardingProgress {
 export function useOnboardingProgress() {
   const { currentUser } = useAuth();
   const userId = currentUser?.id;
-  
-  return useQuery({
+
+  return useQuery<FullOnboardingProgress, Error>({
     queryKey: ['onboarding', 'progress', userId],
     queryFn: async () => {
-      if (!userId) throw new Error("User ID required");
+      if (!userId) throw new Error("User ID required for query key.");
+
+      const isFromRegistration = 
+        sessionStorage.getItem("registration_complete") === "true" ||
+        sessionStorage.getItem("needs_onboarding") === "true";
+
+      logger.info("Fetching onboarding progress from Appwrite...", { 
+        category: "onboarding", 
+        data: { userId, isFromRegistration } 
+      });
       
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("preferences")
-          .eq("id", userId)
-          .single();
-
-        if (error) throw error;
-
-        const onboardingData = data?.preferences?.onboarding;
+        // Fetch user profile from Appwrite
+        const userProfile = await fetchUserProfileByUserId(userId);
         
-        if (!onboardingData) {
+        if (!userProfile) {
+          logger.info("No user profile found, returning default empty data", {
+            category: "onboarding",
+            data: { userId }
+          });
           return {
             genres: [],
             artists: [],
             ratings: [],
             following: [],
             rymImported: false,
-          } as OnboardingProgress;
+            lastCompletedStep: undefined,
+          };
         }
-
-        return {
-          genres: onboardingData.genres || [],
-          artists: onboardingData.artists || [],
-          ratings: onboardingData.ratings || [],
-          following: onboardingData.following || [],
-          rymImported: onboardingData.rymImported || false,
-          lastCompletedStep: onboardingData.lastCompletedStep,
-        } as OnboardingProgress & { lastCompletedStep?: string };
-      } catch (error) {
-        logger.error("Failed to load onboarding progress", {
+        
+        // Extract onboarding data from user profile
+        const onboardingData: FullOnboardingProgress = {
+          genres: userProfile.preferredGenres || [],
+          artists: userProfile.favoriteArtists || [],
+          ratings: [], // We'll need to implement this later
+          following: [], // We'll need to implement this later
+          rymImported: false,
+          lastCompletedStep: userProfile.onboardingCompleted ? 'complete' : undefined,
+        };
+        
+        logger.info("Fetched onboarding progress from Appwrite", {
           category: "onboarding",
-          data: { error, userId },
+          data: { 
+            userId,
+            genresCount: onboardingData.genres.length,
+            artistsCount: onboardingData.artists.length,
+            onboardingCompleted: userProfile.onboardingCompleted
+          }
         });
+        
+        return onboardingData;
+      } catch (error) {
+        logger.error("Unexpected error fetching onboarding progress from Appwrite", {
+          category: "onboarding",
+          data: { userId, error: error instanceof Error ? error.message : String(error) },
+        });
+        
+        if (isFromRegistration) {
+          logger.info("New user from registration with fetch error, returning default empty data", {
+            category: "onboarding",
+            data: { userId }
+          });
+          return {
+            genres: [],
+            artists: [],
+            ratings: [],
+            following: [],
+            rymImported: false,
+            lastCompletedStep: undefined,
+          };
+        }
+        
         throw error;
       }
     },
@@ -65,91 +124,77 @@ export function useOnboardingProgress() {
   });
 }
 
+interface UpdateOnboardingStepPayload {
+  step: string;
+  data: unknown;
+}
+
 /**
  * Hook to update onboarding step data
  */
 export function useUpdateOnboardingStep() {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ 
-      step, 
-      data 
-    }: {
-      step: string;
-      data: unknown;
-    }) => {
+
+  return useMutation<unknown, Error, UpdateOnboardingStepPayload>({
+    mutationFn: async ({ step, data }) => {
       const userId = currentUser?.id;
-      if (!userId) throw new Error("User ID required");
+      if (!userId) throw new Error("User ID required for mutation context.");
+
+      logger.info(`Updating onboarding step in Appwrite: ${step}`, { 
+        category: "onboarding", 
+        data: { userId, step }
+      });
       
-      try {
-        // Get current preferences first
-        const { data: profileData, error: fetchError } = await supabase
-          .from("profiles")
-          .select("preferences")
-          .eq("id", userId)
-          .single();
-
-        if (fetchError) throw fetchError;
-
-        // Prepare the updated preferences object
-        const currentPreferences = profileData?.preferences || {};
-        const currentOnboarding = currentPreferences?.onboarding || {};
-
-        // Create a step-specific update
-        let stepUpdate = {};
-        if (step === "genres") {
-          stepUpdate = { genres: data };
-        } else if (step === "artists") {
-          stepUpdate = { artists: data };
-        } else if (step === "ratings") {
-          stepUpdate = { ratings: data };
-        } else if (step === "rym") {
-          stepUpdate = { rymImported: data };
-        } else if (step === "follow") {
-          stepUpdate = { following: data };
-        }
-
-        // Update the profile
-        const { error } = await supabase
-          .from("profiles")
-          .update({
-            preferences: {
-              ...currentPreferences,
-              onboarding: {
-                ...currentOnboarding,
-                ...stepUpdate,
-                lastCompletedStep: step,
-                updated_at: new Date().toISOString(),
-              },
-            },
-          })
-          .eq("id", userId);
-
-        if (error) throw error;
-        
-        logger.debug("Updated onboarding step", {
-          category: "onboarding",
-          data: { step, success: true },
-        });
-
-        return { success: true, step };
-      } catch (error) {
-        logger.error("Failed to update onboarding step", {
-          category: "onboarding",
-          data: { error, step },
-        });
-        throw error;
+      // Get current user profile
+      const userProfile = await fetchUserProfileByUserId(userId);
+      
+      if (!userProfile) {
+        throw new Error("User profile not found");
       }
+      
+      // Prepare update data based on the step
+      const updateData: Record<string, any> = {};
+      
+      switch (step) {
+        case 'genres':
+          updateData.preferredGenres = data as string[];
+          break;
+        case 'artists':
+          updateData.favoriteArtists = data as string[];
+          break;
+        case 'ratings':
+          // We'll implement this later when we have a ratings collection
+          break;
+        case 'follow':
+          // We'll implement this later when we have a following collection
+          break;
+      }
+      
+      // Update the user profile in Appwrite
+      const updatedProfile = await updateUserProfile(userId, updateData);
+      
+      logger.debug("Updated onboarding step successfully in Appwrite", {
+        category: "onboarding",
+        data: { userId, step },
+      });
+      
+      return updatedProfile;
     },
-    onSuccess: () => {
-      // Invalidate and refetch onboarding data
+    onSuccess: (_data, variables) => {
+      logger.info("useUpdateOnboardingStep: onSuccess", { 
+        category: "onboarding", 
+        data: { variables } 
+      });
       queryClient.invalidateQueries({ 
         queryKey: ['onboarding', 'progress', currentUser?.id] 
       });
     }
   });
+}
+
+interface CompleteOnboardingPayload {
+  progress: OnboardingProgress;
 }
 
 /**
@@ -158,122 +203,53 @@ export function useUpdateOnboardingStep() {
 export function useCompleteOnboarding() {
   const { currentUser } = useAuth();
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ progress }: { progress: OnboardingProgress }) => {
+
+  return useMutation<unknown, Error, CompleteOnboardingPayload>({
+    mutationFn: async ({ progress }) => {
       const userId = currentUser?.id;
-      if (!userId) throw new Error("User ID required");
+      if (!userId) throw new Error("User ID required for mutation context.");
+
+      logger.info("Completing onboarding in Appwrite...", { 
+        category: "onboarding", 
+        data: { userId } // Progress can be large, omitting from logs
+      });
       
-      try {
-        // Get current preferences
-        const { data: profileData, error: fetchError } = await supabase
-          .from("profiles")
-          .select("preferences")
-          .eq("id", userId)
-          .single();
-
-        if (fetchError) throw fetchError;
-
-        const currentPreferences = profileData?.preferences || {};
-
-        // Update profile with all onboarding preferences
-        const { error } = await supabase
-          .from("profiles")
-          .update({
-            preferences: {
-              ...currentPreferences,
-              onboarding: {
-                genres: progress.genres,
-                artists: progress.artists,
-                ratings: progress.ratings,
-                following: progress.following,
-                rymImported: progress.rymImported,
-                completed: true,
-                completedAt: new Date().toISOString(),
-              },
-            },
-          })
-          .eq("id", userId);
-
-        if (error) throw error;
-
-        // Also save genres to user_genres table if we have them
-        if (progress.genres.length > 0) {
-          await saveUserGenres(userId, progress.genres);
-        }
-
-        logger.info("Successfully completed onboarding", {
-          category: "onboarding",
-          data: { success: true, userId },
-        });
-
-        return { success: true };
-      } catch (error) {
-        logger.error("Error completing onboarding", {
-          category: "onboarding",
-          data: { error },
-        });
-        throw error;
+      // Get current user profile
+      const userProfile = await fetchUserProfileByUserId(userId);
+      
+      if (!userProfile) {
+        throw new Error("User profile not found");
       }
+      
+      // Prepare update data with all progress data and mark onboarding as completed
+      const updateData: Record<string, any> = {
+        preferredGenres: progress.genres,
+        favoriteArtists: progress.artists,
+        onboardingCompleted: true
+      };
+      
+      // Update the user profile in Appwrite
+      const updatedProfile = await updateUserProfile(userId, updateData);
+      
+      // Clear onboarding flags from session storage
+      sessionStorage.removeItem("needs_onboarding");
+      sessionStorage.removeItem("registration_complete");
+      
+      logger.info("Onboarding completed successfully in Appwrite", {
+        category: "onboarding",
+        data: { userId },
+      });
+      
+      return updatedProfile;
     },
     onSuccess: () => {
+      logger.info("useCompleteOnboarding: onSuccess", { category: "onboarding" });
       queryClient.invalidateQueries({ 
-        queryKey: ['onboarding'] 
+        queryKey: ['onboarding', 'progress', currentUser?.id] 
       });
-      queryClient.invalidateQueries({
-        queryKey: ['user', currentUser?.id]
+      queryClient.invalidateQueries({ 
+        queryKey: ['profile', currentUser?.id] 
       });
     }
   });
-}
-
-// Helper function to save user genres
-async function saveUserGenres(userId: string, genreNames: string[]) {
-  if (genreNames.length === 0) return;
-  
-  try {
-    // First, fetch genre IDs for the selected genre names
-    const { data: genres, error: genresError } = await supabase
-      .from("genres")
-      .select("id, name")
-      .in("name", genreNames);
-
-    if (genresError) throw genresError;
-
-    // Clear existing user genre preferences
-    await supabase
-      .from("user_genres")
-      .delete()
-      .eq("user_id", userId);
-
-    if (!genres || genres.length === 0) {
-      // Use fallback method - insert genre names directly
-      const fallbackGenres = genreNames.map((genre) => ({
-        genre: genre,
-        user_id: userId,
-      }));
-
-      await supabase
-        .from("user_genres")
-        .insert(fallbackGenres);
-        
-      return;
-    }
-
-    // Create user genre preference records
-    const userGenreRecords = genres.map((genre) => ({
-      user_id: userId,
-      genre_id: genre.id,
-      genre: genre.name,
-    }));
-
-    await supabase.from("user_genres").insert(userGenreRecords);
-    
-  } catch (error) {
-    logger.error("Error saving user genre preferences", {
-      category: "user",
-      data: { error },
-    });
-    throw error;
-  }
 }

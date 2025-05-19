@@ -9,7 +9,7 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,11 +20,33 @@ export function Login() {
     try {
       setError("");
       setIsLoading(true);
-      await login(email, password);
+      await signIn({ email, password });
       navigate("/");
     } catch (err) {
-      setError("Failed to sign in. Please check your credentials.");
+      console.error("Login error:", err);
+      if (err instanceof Error) {
+        setError(err.message || "Failed to sign in. Please check your credentials.");
+      } else {
+        setError("Failed to sign in. Please check your credentials.");
+      }
     } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleGoogleSignIn = async () => {
+    try {
+      setError("");
+      setIsLoading(true);
+      await signInWithGoogle();
+      // The redirect to Google will happen, and AuthCallback will handle the return
+    } catch (err) {
+      console.error("Google sign-in error:", err);
+      if (err instanceof Error) {
+        setError(err.message || "Failed to sign in with Google.");
+      } else {
+        setError("Failed to sign in with Google.");
+      }
       setIsLoading(false);
     }
   };
@@ -126,7 +148,12 @@ export function Login() {
               </div>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <button className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors">
+              <button 
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading}
+                className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              >
                 <span className="sr-only">Sign in with Google</span>
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path
@@ -135,7 +162,12 @@ export function Login() {
                   />
                 </svg>
               </button>
-              <button className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors">
+              <button 
+                type="button" 
+                className="flex justify-center items-center py-2 px-4 border rounded-lg hover:bg-gray-50 transition-colors opacity-50 cursor-not-allowed"
+                disabled
+                title="Apple Sign In coming soon"
+              >
                 <span className="sr-only">Sign in with Apple</span>
                 <svg
                   className="h-5 w-5"

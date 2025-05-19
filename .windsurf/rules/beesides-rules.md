@@ -1,12 +1,12 @@
 ---
-applyTo: "**"
+trigger: always_on
 ---
 
-# Beesides Web App - GitHub Copilot Instructions
+# Beesides Web App
 
 ## Important Note
 
-ALWAYS USE THE MCP SERVERS AND TOOLS I HAVE RUNNING
+I have two repos in this workspace. This one is the frontend and the backend is at beesides-api.
 
 ## Project Overview
 
@@ -18,9 +18,9 @@ Beesides is a community-driven music discovery platform that helps users find th
 - **Styling**: TailwindCSS
 - **Routing**: React Router
 - **State Management**: React Context API
-- **Backend Integration**: Supabase
+- **Backend Integration**: Appwrite
 - **Build Tool**: Vite
-- **Server Requirements**: Always use Supabase, Context7, and sequential thinking MCP servers for all backend integrations and data processing. They are running within the IDE as tools.
+- **Server Requirements**: Always use Appwrite, Context7, and sequential thinking MCP servers for all backend integrations and data processing. They are running within the IDE as tools.
 
 ## Code Style and Best Practices
 
@@ -60,7 +60,7 @@ Beesides is a community-driven music discovery platform that helps users find th
 
 ### Authentication
 
-- Use Supabase for auth functionality
+- Use Appwrite for auth functionality
 - Implement proper auth state management through AuthContext
 - Always handle loading and error states for auth operations
 
@@ -70,7 +70,7 @@ Beesides is a community-driven music discovery platform that helps users find th
 
 - Email/password and social authentication (Google)
 - Proper validation for registration and login forms
-- Secure token management using Supabase
+- Secure token management using Appwrite
 
 ### User Profiles
 
@@ -141,9 +141,9 @@ Beesides is a community-driven music discovery platform that helps users find th
 
 ## Integration Points
 
-- Supabase for backend functionality
-  - Use Supabase for all database operations, authentication, and storage needs
-  - Implement row-level security (RLS) policies for data protection
+- Appwrite for backend functionality
+  - Use Appwrite for all database operations, authentication, and storage needs
+  - Implement proper access control and permissions
 - Context7 MCP server integration for enhanced contextual processing
   - Use Context7 for all context-aware operations
   - Implement proper error handling for Context7 API calls
@@ -157,10 +157,3 @@ Beesides is a community-driven music discovery platform that helps users find th
 
 - Document any known bugs or limitations as they are discovered
 - Include workarounds for common issues
-
-## Future Roadmap Considerations
-
-- Stream service integration features
-- Progressive Web App capabilities
-- User-to-user messaging
-- Enhanced analytics for listening habits

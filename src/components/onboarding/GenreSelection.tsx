@@ -1,7 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { logger } from "../../utils/logger";
-import { supabase } from "../../lib/supabase";
+import { databases } from "../../hooks/queries/useAppwriteQueries";
+import { Query, Models } from "appwrite";
+
+// Define a type for genre documents from Appwrite
+interface GenreDocument extends Models.Document {
+  name: string;
+}
 
 interface GenreSelectionProps {
   selectedGenres: string[];
@@ -51,23 +57,25 @@ export function GenreSelection({
       if (initialGenreFetchDone.current) return; // Only run once
 
       try {
-        const { data, error } = await supabase
-          .from("genres")
-          .select("name")
-          .order("name");
+        const response = await databases.listDocuments(
+          "default_database", // Replace with your actual database ID
+          "genres", // Replace with your actual collection ID
+          [Query.orderAsc("name")]
+        );
 
-        if (error) {
-          throw error;
-        }
+        const data = response.documents as GenreDocument[];
 
         if (data && data.length > 0) {
           logger.debug("Fetched genres from database", {
             category: "onboarding",
-            data: { genreCount: data.length, genres: data.map((g) => g.name) },
+            data: {
+              genreCount: data.length,
+              genres: data.map((g: GenreDocument) => g.name),
+            },
           });
 
           // Organize genres into categories
-          const fetchedGenres = data.map((g) => g.name);
+          const fetchedGenres = data.map((g: GenreDocument) => g.name);
 
           // Update availableGenres based on database values while preserving categories
           const existingCategories = [...availableGenres];
@@ -82,7 +90,7 @@ export function GenreSelection({
               (category) => category.subgenres
             );
             const missingGenres = fetchedGenres.filter(
-              (genre) => !allExistingSubgenres.includes(genre)
+              (genre: string) => !allExistingSubgenres.includes(genre)
             );
 
             if (missingGenres.length > 0) {
@@ -119,7 +127,7 @@ export function GenreSelection({
     };
 
     fetchGenres();
-  }, []); // Empty dependency array as we use ref to prevent re-runs
+  }, [availableGenres]); // Include availableGenres in dependency array
 
   // Log when component mounts
   useEffect(() => {

@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "projectName": "beesides-web-app",
+  "tasksFile": "../tasks/tasks.json",
+  "outputDir": "../tasks",
+  "models": {
+    "main": "gpt-4",
+    "fallback": "gpt-3.5-turbo",
+    "research": "gpt-4"
+  }
+}
