@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { StarIcon, HeartIcon, ListPlusIcon, ShareIcon, MessageSquareIcon } from 'lucide-react';
 import { Link } from '../components/Link';
@@ -65,9 +65,12 @@ export function Album() {
     alert('Your review has been published!');
   };
   const renderRatingStars = () => {
-    return <div className="flex">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(rating => <button key={rating} onClick={() => setUserRating(rating)} className="p-1">
+    // Allow half-point increments
+    const increments = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+    return <div className="flex flex-wrap gap-1">
+        {increments.map(rating => <button key={rating} onClick={() => setUserRating(rating)} className="p-1">
             <StarIcon size={20} className={userRating !== null && rating <= userRating ? 'fill-black' : 'stroke-gray-400'} />
+            {rating % 1 !== 0 && <span className="text-xs align-top">½</span>}
           </button>)}
       </div>;
   };
@@ -180,6 +183,6 @@ export function Album() {
         </div>
       </div>
       {/* Review Modal */}
-      <ReviewFormModal albumId={album.id} albumTitle={album.title} albumArtist={album.artist} albumCover={album.cover} isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} onSubmit={handleReviewSubmit} />
+      <ReviewFormModal album={album} isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} onSubmit={handleReviewSubmit} />
     </Layout>;
 }

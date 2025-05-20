@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { StarIcon, XIcon } from 'lucide-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 interface ReviewFormModalProps {
-  albumId: number;
   albumTitle: string;
   albumArtist: string;
   albumCover: string;
@@ -14,7 +15,6 @@ interface ReviewFormModalProps {
   }) => void;
 }
 export function ReviewFormModal({
-  albumId,
   albumTitle,
   albumArtist,
   albumCover,
@@ -71,13 +71,34 @@ export function ReviewFormModal({
             <div className="mb-6">
               <label className="block font-medium mb-2">Your Rating</label>
               <div className="flex flex-col">
+                {/* Rating input with half-point increments */}
                 <div className="flex mb-2">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(value => <button key={value} type="button" onClick={() => setRating(value)} onMouseEnter={() => setHoverRating(value)} onMouseLeave={() => setHoverRating(null)} className="p-1">
+                  {[1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10].map(value => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setRating(value)}
+                      onMouseEnter={() => setHoverRating(value)}
+                      onMouseLeave={() => setHoverRating(null)}
+                      className={`p-1 focus:outline-none ${value % 1 !== 0 ? 'relative' : ''}`}
+                      aria-label={`Rate ${value} out of 10`}
+                      tabIndex={0}
+                    >
                       <StarIcon size={24} className={value <= displayRating ? 'fill-black text-black' : 'text-gray-300'} />
-                    </button>)}
+                      {value % 1 !== 0 && (
+                        <span className="absolute left-1/2 top-0 text-xs text-yellow-600" style={{transform: 'translateX(-50%)'}}>
+                          ½
+                        </span>
+                      )}
+                    </button>
+                  ))}
                 </div>
                 <p className="text-sm font-medium">
-                  {displayRating ? ratingDescriptions[displayRating] : ratingDescriptions[0]}
+                  {displayRating
+                    ? (displayRating % 1 === 0
+                        ? ratingDescriptions[displayRating]
+                        : `${ratingDescriptions[Math.floor(displayRating)]} + ½`)
+                    : ratingDescriptions[0]}
                 </p>
               </div>
             </div>
@@ -93,7 +114,9 @@ export function ReviewFormModal({
               <label htmlFor="review-content" className="block font-medium mb-2">
                 Your Review
               </label>
-              <textarea id="review-content" value={content} onChange={e => setContent(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black min-h-[150px]" placeholder="What did you think about this album? What stood out to you? How does it compare to the artist's other work?" />
+              <div id="review-content-rich" className="mb-2">
+                <ReactQuill value={content} onChange={setContent} theme="snow" placeholder="What did you think about this album? What stood out to you? How does it compare to the artist's other work?" />
+              </div>
               <p className="text-xs opacity-70 mt-1">Minimum 50 characters</p>
             </div>
             {/* Submit Button */}
