@@ -11,14 +11,15 @@ export function AuthButton() {
   
   // Use effect to stabilize the auth state and prevent flickering
   useEffect(() => {
-    // Only update the stable state when loading completes or auth state definitively changes
-    if (!loading || (stableAuthState.isLoading && !loading)) {
-      setStableAuthState({
-        isAuthenticated: isAuthenticated,
-        isLoading: loading
-      });
+    // Only update the stable state when the new state differs from the current state
+    const newState = { isAuthenticated: isAuthenticated, isLoading: loading };
+    if (
+      stableAuthState.isAuthenticated !== newState.isAuthenticated ||
+      stableAuthState.isLoading !== newState.isLoading
+    ) {
+      setStableAuthState(newState);
     }
-  }, [isAuthenticated, loading, stableAuthState.isLoading]);
+  }, [isAuthenticated, loading]);
   
   // During initial load, show nothing to prevent flickering
   if (stableAuthState.isLoading) {
