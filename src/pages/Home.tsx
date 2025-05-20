@@ -19,21 +19,22 @@ import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
 export function Home() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isSessionInitialized } = useAuth();
   const navigate = useNavigate();
 
   // Check if user needs to be redirected to onboarding
   useEffect(() => {
-    if (!loading && isAuthenticated) {
+    // Only process redirects after session is fully initialized
+    // This prevents flickering during authentication state determination
+    if (isSessionInitialized && !loading && isAuthenticated) {
       const needsOnboarding =
         sessionStorage.getItem("needs_onboarding") === "true";
       if (needsOnboarding) {
-        console.log("Redirecting to onboarding from Home page");
         sessionStorage.removeItem("needs_onboarding");
         navigate("/onboarding", { replace: true });
       }
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, loading, isSessionInitialized, navigate]);
   const albums = [
     {
       id: 1,
@@ -134,376 +135,201 @@ export function Home() {
     <Layout>
       <div className="max-w-7xl mx-auto px-4 pt-6 pb-20 md:px-6 lg:px-8">
         {/* Hero Section */}
-        <div className="text-center max-w-3xl mx-auto mb-24">
-          <h1 className="text-4xl md:text-6xl font-mono font-bold mb-6">
-            Beesides
+        <div className="text-center mb-16">
+          <h1 className="text-5xl md:text-6xl font-mono font-bold mb-6">
+            Discover music through{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">
+              people
+            </span>
+            , not algorithms
           </h1>
-          <p className="text-lg md:text-xl opacity-80 mb-8">
-            Discover your next favorite album through people, not algorithms
+          <p className="text-xl opacity-70 max-w-3xl mx-auto mb-8">
+            Beesides helps you find your next favorite albums through a
+            community of music enthusiasts, not repetitive recommendation
+            engines.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex justify-center gap-4">
             <Link
               to="/register"
-              className="px-8 py-3 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors font-bold text-center"
+              className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors font-bold"
             >
-              Join Now
+              Join the Community
             </Link>
             <Link
-              to="/discover"
-              className="px-8 py-3 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              to="/explore"
+              className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-bold flex items-center gap-2"
             >
-              Explore Music
+              <PlayIcon size={18} />
+              Explore Albums
             </Link>
           </div>
         </div>
-        {/* Problem-Solution Sections */}
-        <div className="space-y-32 mb-32">
-          {/* Problem 1 */}
-          <div className="md:flex items-center gap-12">
-            <div className="md:w-1/2 mb-8 md:mb-0">
-              <h2 className="text-3xl md:text-4xl font-mono font-bold mb-6">
-                Tired of the same recommendations?
-              </h2>
-              <p className="text-lg mb-6 opacity-80">
-                Streaming platforms keep suggesting the same artists based on
-                your listening history. Beesides breaks the algorithm loop with
-                community-driven recommendations from people who share your
-                unique taste in music.
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 bg-black rounded-full">
-                  <CheckIcon size={18} className="text-white" />
-                </div>
-                <p>Discover music from real people, not algorithms</p>
-              </div>
-            </div>
-            <div className="md:w-1/2 bg-gray-50 p-8 rounded-2xl">
-              <div className="relative">
-                <img
-                  src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?q=80&w=2070&auto=format&fit=crop"
-                  alt="People discussing music"
-                  className="rounded-lg w-full"
-                />
-                <div className="absolute -bottom-6 -right-6 bg-white p-4 rounded-xl shadow-lg max-w-xs">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0 overflow-hidden">
-                      <img
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1964&auto=format&fit=crop"
-                        alt="User"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold">Sarah recommended:</p>
-                      <p className="text-sm">
-                        "If you liked 'The Suffering', you'll love 'Midnight
-                        Tales'"
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+
+        {/* Featured Albums */}
+        <div className="mb-24">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-3xl font-mono font-bold">Featured Albums</h2>
+            <Link
+              to="/explore"
+              className="flex items-center gap-1 text-sm font-bold"
+            >
+              View All
+              <ArrowRightIcon size={16} />
+            </Link>
           </div>
-          {/* Problem 2 */}
-          <div className="md:flex items-center gap-12 flex-row-reverse">
-            <div className="md:w-1/2 mb-8 md:mb-0">
-              <h2 className="text-3xl md:text-4xl font-mono font-bold mb-6">
-                Want to remember albums you've enjoyed?
-              </h2>
-              <p className="text-lg mb-6 opacity-80">
-                We've all had that moment: "What was that album I loved last
-                year?" Beesides creates your personal music journal where you
-                can rate, review, and catalog every album you listen to,
-                building your musical identity over time.
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 bg-black rounded-full">
-                  <CheckIcon size={18} className="text-white" />
-                </div>
-                <p>
-                  Build your musical identity with detailed ratings and reviews
-                </p>
-              </div>
-            </div>
-            <div className="md:w-1/2 bg-gray-50 p-8 rounded-2xl">
-              <div className="relative">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="flex gap-4 mb-4">
-                    <img
-                      src="https://images.unsplash.com/photo-1599719500956-d158a3abd461?q=80&w=2070&auto=format&fit=crop"
-                      alt="Album cover"
-                      className="w-20 h-20 rounded-lg object-cover"
-                    />
-                    <div>
-                      <h3 className="font-bold">The Suffering</h3>
-                      <p className="text-sm opacity-70">Emily Bryan</p>
-                      <div className="flex items-center mt-1">
-                        <div className="flex">
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((star) => (
-                            <StarIcon
-                              key={star}
-                              size={14}
-                              className="fill-black"
-                            />
-                          ))}
-                          <StarIcon size={14} className="stroke-black" />
-                        </div>
-                        <span className="ml-2 text-sm font-bold">9.0</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="border-t pt-3">
-                    <p className="text-sm">
-                      "This album completely changed my perspective on modern
-                      classic music. The production quality is outstanding."
-                    </p>
-                    <p className="text-xs opacity-70 mt-2">
-                      Reviewed on March 15, 2024
-                    </p>
-                  </div>
-                </div>
-                <div className="absolute -top-4 -left-4 bg-white p-2 rounded-lg shadow-md">
-                  <ListMusicIcon size={24} />
-                </div>
-                <div className="absolute -bottom-4 -right-4 bg-white p-2 rounded-lg shadow-md">
-                  <StarIcon size={24} />
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* Problem 3 */}
-          <div className="md:flex items-center gap-12">
-            <div className="md:w-1/2 mb-8 md:mb-0">
-              <h2 className="text-3xl md:text-4xl font-mono font-bold mb-6">
-                Looking for music beyond algorithms?
-              </h2>
-              <p className="text-lg mb-6 opacity-80">
-                Streaming platforms optimize for engagement, not discovery.
-                Beesides creates connections between music enthusiasts who share
-                their genuine passion and knowledge, helping you discover hidden
-                gems that would otherwise remain buried.
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 bg-black rounded-full">
-                  <CheckIcon size={18} className="text-white" />
-                </div>
-                <p>Connect with music enthusiasts who share your taste</p>
-              </div>
-            </div>
-            <div className="md:w-1/2 bg-gray-50 p-8 rounded-2xl">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <UserIcon size={20} />
-                  <p className="font-bold">
-                    Follow curators with similar taste
-                  </p>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="bg-white p-3 rounded-lg">
-                      <div className="w-12 h-12 rounded-full bg-gray-200 mx-auto mb-2 overflow-hidden">
-                        <img
-                          src={`https://images.unsplash.com/photo-${
-                            1500648767791 + i
-                          }-00173eea3a1e?q=80&w=1974&auto=format&fit=crop`}
-                          alt={`Curator ${i}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <p className="text-center text-sm font-bold">Alex K.</p>
-                      <p className="text-center text-xs opacity-70">
-                        Jazz, Electronic
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-white p-3 rounded-lg">
-                  <p className="text-sm font-bold mb-1">
-                    Alex's "Hidden Gems" Collection
-                  </p>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <img
-                        key={i}
-                        src={albums[i - 1].cover}
-                        alt={`Album ${i}`}
-                        className="w-12 h-12 rounded object-cover flex-shrink-0"
-                      />
-                    ))}
-                    <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs">+12</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {albums.map((album) => (
+              <AlbumCard key={album.id} album={album} />
+            ))}
           </div>
         </div>
-        {/* App Mockup Section */}
-        <div className="mb-32">
+
+        {/* Stats Banner */}
+        <StatsBanner className="mb-24" />
+
+        {/* Browse by Genre */}
+        <div className="mb-24">
+          <h2 className="text-3xl font-mono font-bold mb-8">Browse by Genre</h2>
+          <div className="flex flex-wrap gap-3">
+            <GenreTag genre="Rock" count={1243} />
+            <GenreTag genre="Hip Hop" count={982} />
+            <GenreTag genre="Electronic" count={876} />
+            <GenreTag genre="Jazz" count={654} />
+            <GenreTag genre="Classical" count={432} />
+            <GenreTag genre="R&B" count={321} />
+            <GenreTag genre="Country" count={298} />
+            <GenreTag genre="Metal" count={276} />
+            <GenreTag genre="Pop" count={1432} />
+            <GenreTag genre="Indie" count={987} />
+            <GenreTag genre="Folk" count={543} />
+            <GenreTag genre="Soul" count={321} />
+          </div>
+        </div>
+
+        {/* How It Works */}
+        <div className="mb-24">
           <h2 className="text-3xl font-mono font-bold text-center mb-12">
-            See Beesides in action
+            How Beesides Works
           </h2>
-          <div className="relative bg-gray-50 rounded-2xl p-8 md:p-12 overflow-hidden">
-            <div className="md:w-3/4 mx-auto">
-              <img
-                src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=1974&auto=format&fit=crop"
-                alt="App interface"
-                className="rounded-xl shadow-2xl"
-              />
-              {/* Feature Callouts */}
-              <div className="absolute top-1/4 -left-4 md:left-12 bg-white p-3 rounded-lg shadow-lg max-w-[200px] transform -translate-y-1/2">
-                <div className="flex items-start gap-2">
-                  <div className="p-1.5 bg-black rounded-full flex-shrink-0">
-                    <StarIcon size={16} className="text-white" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">Detailed Rating System</p>
-                    <p className="text-xs opacity-70">
-                      Rate albums on a 10-point scale with nuanced reviews
-                    </p>
-                  </div>
-                </div>
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-gray-50 p-6 rounded-xl text-center">
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
+                <StarIcon size={24} className="text-white" />
               </div>
-              <div className="absolute top-2/3 right-4 md:right-12 bg-white p-3 rounded-lg shadow-lg max-w-[200px]">
-                <div className="flex items-start gap-2">
-                  <div className="p-1.5 bg-black rounded-full flex-shrink-0">
-                    <ListMusicIcon size={16} className="text-white" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">Curated Collections</p>
-                    <p className="text-xs opacity-70">
-                      Discover themed collections from music enthusiasts
-                    </p>
-                  </div>
-                </div>
+              <h3 className="text-xl font-bold mb-2">Rate & Review</h3>
+              <p className="opacity-70">
+                Rate albums on a 10-point scale and write detailed reviews to
+                share your thoughts with the community.
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl text-center">
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
+                <ListMusicIcon size={24} className="text-white" />
               </div>
-              <div className="absolute bottom-8 md:bottom-12 left-4 md:left-1/4 bg-white p-3 rounded-lg shadow-lg max-w-[200px]">
-                <div className="flex items-start gap-2">
-                  <div className="p-1.5 bg-black rounded-full flex-shrink-0">
-                    <PlayIcon size={16} className="text-white" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">Seamless Listening</p>
-                    <p className="text-xs opacity-70">
-                      Connect with your favorite streaming services
-                    </p>
-                  </div>
-                </div>
+              <h3 className="text-xl font-bold mb-2">Create Collections</h3>
+              <p className="opacity-70">
+                Organize albums into personal collections and lists that you can
+                share with friends or keep private.
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl text-center">
+              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mx-auto mb-4">
+                <UserIcon size={24} className="text-white" />
               </div>
+              <h3 className="text-xl font-bold mb-2">Follow Curators</h3>
+              <p className="opacity-70">
+                Connect with users who share your taste and discover new music
+                through their recommendations.
+              </p>
             </div>
           </div>
         </div>
-        {/* Metrics Section */}
-        <div className="mb-32">
+
+        {/* Comparison Table */}
+        <div className="mb-24">
           <h2 className="text-3xl font-mono font-bold text-center mb-3">
-            Join thousands who have discovered
+            Break the Algorithm Loop
           </h2>
           <p className="text-center opacity-70 max-w-2xl mx-auto mb-12">
-            Beesides is helping music enthusiasts around the world break out of
-            their bubbles and discover new sounds every day.
+            Streaming services keep you listening to the same types of music.
+            Beesides helps you discover truly new sounds.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-gray-50 p-6 rounded-xl text-center">
-              <p className="text-4xl font-bold mb-2">14,000+</p>
-              <p className="opacity-70">New artists discovered</p>
+          <div className="bg-gray-50 rounded-xl overflow-hidden">
+            <div className="grid grid-cols-3 p-4 border-b border-gray-200 bg-gray-100">
+              <div className="col-span-1 font-bold">Feature</div>
+              <div className="col-span-1 font-bold text-center">Beesides</div>
+              <div className="col-span-1 font-bold text-center">
+                Streaming Services
+              </div>
             </div>
-            <div className="bg-gray-50 p-6 rounded-xl text-center">
-              <p className="text-4xl font-bold mb-2">250,000+</p>
-              <p className="opacity-70">Albums rated</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl text-center">
-              <p className="text-4xl font-bold mb-2">50,000+</p>
-              <p className="opacity-70">Active users</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl text-center">
-              <p className="text-4xl font-bold mb-2">8,500+</p>
-              <p className="opacity-70">Curated collections</p>
-            </div>
+            {comparisonFeatures.map((feature, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-3 p-4 border-b border-gray-200"
+              >
+                <div className="col-span-1">{feature.name}</div>
+                <div className="col-span-1 flex justify-center">
+                  {feature.beesides ? (
+                    <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckIcon size={16} className="text-green-600" />
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
+                      <XIcon size={16} className="text-red-600" />
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-1 flex justify-center">
+                  {feature.streaming ? (
+                    <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckIcon size={16} className="text-green-600" />
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
+                      <XIcon size={16} className="text-red-600" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-        {/* Comparison Table */}
-        <div className="mb-32">
-          <h2 className="text-3xl font-mono font-bold text-center mb-12">
-            How Beesides Compares
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left p-4 border-b-2"></th>
-                  <th className="p-4 border-b-2 text-center">
-                    <span className="font-mono font-bold text-xl">
-                      Beesides
-                    </span>
-                  </th>
-                  <th className="p-4 border-b-2 text-center">
-                    <span className="opacity-70">Traditional Streaming</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonFeatures.map((feature, index) => (
-                  <tr
-                    key={index}
-                    className={index % 2 === 0 ? "bg-gray-50" : ""}
-                  >
-                    <td className="p-4 font-medium">{feature.name}</td>
-                    <td className="p-4 text-center">
-                      {feature.beesides ? (
-                        <CheckIcon
-                          size={24}
-                          className="mx-auto text-green-600"
-                        />
-                      ) : (
-                        <XIcon size={24} className="mx-auto text-red-500" />
-                      )}
-                    </td>
-                    <td className="p-4 text-center">
-                      {feature.streaming ? (
-                        <CheckIcon
-                          size={24}
-                          className="mx-auto text-green-600"
-                        />
-                      ) : (
-                        <XIcon size={24} className="mx-auto text-red-500" />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {/* Sign Up Form */}
-        <div className="mb-32">
-          <div className="bg-black text-white rounded-2xl p-8 md:p-12">
-            <div className="md:flex items-center gap-8">
-              <div className="md:w-1/2 mb-8 md:mb-0">
-                <h2 className="text-3xl font-mono font-bold mb-4">
-                  Start your music discovery journey
+
+        {/* CTA Section */}
+        <div className="mb-24 bg-gray-900 text-white rounded-2xl overflow-hidden">
+          <div className="p-8 md:p-12">
+            <div className="grid md:grid-cols-2 gap-8 items-center">
+              <div>
+                <h2 className="text-3xl font-bold mb-4">
+                  Start your music journey today
                 </h2>
                 <p className="opacity-80 mb-6">
-                  Join thousands of music enthusiasts who are expanding their
-                  musical horizons every day. Sign up now and get personalized
-                  recommendations based on your taste.
+                  Join thousands of music enthusiasts who are discovering their
+                  next favorite albums through Beesides.
                 </p>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-1 bg-white rounded-full">
-                    <CheckIcon size={16} className="text-black" />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-white rounded-full">
+                      <CheckIcon size={16} className="text-black" />
+                    </div>
+                    <p className="text-sm">Rate and review your favorite albums</p>
                   </div>
-                  <p className="text-sm">
-                    Free to join, no credit card required
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-1 bg-white rounded-full">
-                    <CheckIcon size={16} className="text-black" />
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-white rounded-full">
+                      <CheckIcon size={16} className="text-black" />
+                    </div>
+                    <p className="text-sm">
+                      Create and share personalized collections
+                    </p>
                   </div>
-                  <p className="text-sm">
-                    Connect with your favorite streaming service
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-white rounded-full">
+                      <CheckIcon size={16} className="text-black" />
+                    </div>
+                    <p className="text-sm">
+                      Connect with your favorite streaming service
+                    </p>
+                  </div>
                 </div>
               </div>
               <div className="md:w-1/2">

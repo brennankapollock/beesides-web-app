@@ -1,42 +1,42 @@
 import { useAuth } from "../hooks/useAuth";
 import { Link } from "./Link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function AuthButton() {
   const { currentUser, isAuthenticated, loading } = useAuth();
+  const [stableAuthState, setStableAuthState] = useState<{
+    isAuthenticated: boolean;
+    isLoading: boolean;
+  }>({ isAuthenticated: false, isLoading: true });
   
-  // Add debugging logs to trace auth state in UI
+  // Use effect to stabilize the auth state and prevent flickering
   useEffect(() => {
-    console.log("AuthButton component - auth state:", {
-      isAuthenticated,
-      isLoading: loading,
-      hasCurrentUser: !!currentUser,
-      userId: currentUser?.id,
-      username: currentUser?.username,
-      email: currentUser?.email,
-      timestamp: new Date().toISOString()
-    });
-  }, [isAuthenticated, currentUser, loading]);
+    // Only update the stable state when the new state differs from the current state
+    const newState = { isAuthenticated: isAuthenticated, isLoading: loading };
+    if (
+      stableAuthState.isAuthenticated !== newState.isAuthenticated ||
+      stableAuthState.isLoading !== newState.isLoading
+    ) {
+      setStableAuthState(newState);
+    }
+  }, [isAuthenticated, loading]);
   
-  console.log("AuthButton rendering with:", { 
-    isAuthenticated, 
-    hasCurrentUser: !!currentUser,
-    username: currentUser?.username,
-    isLoading: loading
-  });
+  // During initial load, show nothing to prevent flickering
+  if (stableAuthState.isLoading) {
+    return (
+      <div className="flex gap-2 opacity-0">
+        <div className="px-4 py-2 rounded-lg">Sign in</div>
+        <div className="px-4 py-2 rounded-lg">Sign up</div>
+      </div>
+    );
+  }
   
-  // Don't render anything while loading to prevent flash of wrong UI
-  if (loading) {
-    console.log("AuthButton: Auth state is loading, not rendering buttons yet");
+  // Don't show auth buttons when user is authenticated
+  if (stableAuthState.isAuthenticated) {
     return null;
   }
   
-  if (isAuthenticated && currentUser) {
-    console.log("AuthButton: User is authenticated, not showing sign in buttons");
-    return null; // Don't show anything when user is signed in
-  }
-  
-  console.log("AuthButton: User is NOT authenticated, showing sign in buttons");
+  // Show auth buttons when user is definitely not authenticated
   return (
     <div className="flex gap-2">
       <Link
