@@ -19,21 +19,22 @@ import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
 export function Home() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isSessionInitialized } = useAuth();
   const navigate = useNavigate();
 
   // Check if user needs to be redirected to onboarding
   useEffect(() => {
-    if (!loading && isAuthenticated) {
+    // Only process redirects after session is fully initialized
+    // This prevents flickering during authentication state determination
+    if (isSessionInitialized && !loading && isAuthenticated) {
       const needsOnboarding =
         sessionStorage.getItem("needs_onboarding") === "true";
       if (needsOnboarding) {
-        console.log("Redirecting to onboarding from Home page");
         sessionStorage.removeItem("needs_onboarding");
         navigate("/onboarding", { replace: true });
       }
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, loading, isSessionInitialized, navigate]);
   const albums = [
     {
       id: 1,

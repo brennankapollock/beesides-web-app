@@ -46,6 +46,7 @@ export interface AuthContextType {
   loading: boolean;
   isLoading: boolean; // Alias for loading for consistent naming
   isAuthenticated: boolean; // Whether user is currently authenticated
+  isSessionInitialized: boolean; // Whether the session has been initialized
   signUp: (credentials: SignUpCredentials) => Promise<AuthUser | null>;
   signIn: (credentials: SignInCredentials) => Promise<AuthUser | null>;
   signOut: () => Promise<void>;

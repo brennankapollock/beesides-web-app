@@ -16,6 +16,7 @@ import { createUserProfile } from "../hooks/useAppwriteProfile";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionInitialized, setSessionInitialized] = useState(false);
 
   const mapAppwriteUserToAuthUser = useCallback(
     (appwriteUser: AppwriteUser | Models.Session): AuthUser => {
@@ -40,6 +41,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Enhanced session management with retry logic and better error handling
   useEffect(() => {
+    // Skip if we've already initialized the session
+    if (sessionInitialized) {
+      return;
+    }
+    
     const fetchSession = async () => {
       setLoading(true);
       logger.info("Initializing and fetching Appwrite session", {
@@ -102,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setCurrentUser(null);
       } finally {
         setLoading(false);
+        setSessionInitialized(true);
       }
     };
     
@@ -109,7 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     // Set up event listeners for auth state changes
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && sessionInitialized) {
+        // Only check session on visibility change if we've already initialized
+        // This prevents unnecessary flickering during initial page load
         fetchSession();
       }
     };
@@ -472,7 +481,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Add checkAuthStatus function to explicitly check authentication status
   const checkAuthStatus = async (): Promise<AuthUser | null> => {
-    setLoading(true);
+    // Don't set loading to true if we already have a user
+    // This prevents unnecessary UI flickering when rechecking auth status
+    if (!currentUser) {
+      setLoading(true);
+    }
+    
     logger.info("Explicitly checking auth status with Appwrite", {
       category: "auth",
     });
@@ -480,6 +494,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userAccount = await account.get();
       const authUser = mapAppwriteUserToAuthUser(userAccount);
       setCurrentUser(authUser);
+      setSessionInitialized(true);
       
       // Ensure user has a profile in the database
       try {
@@ -579,6 +594,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     isLoading: loading, // Add isLoading as alias for loading
     isAuthenticated: !!currentUser, // Add isAuthenticated property
+    isSessionInitialized: sessionInitialized, // Add flag to indicate if session has been initialized
     signUp,
     signIn,
     signOut,
