@@ -126,152 +126,112 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check session when tab becomes visible again
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // Clean up event listener
+    // Clean up event listeners
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [mapAppwriteUserToAuthUser]);
+  }, [mapAppwriteUserToAuthUser, sessionInitialized]);
 
   const signUp = async (
     credentials: SignUpCredentials
   ): Promise<AuthUser | null> => {
     setLoading(true);
-    logger.info("Attempting user sign up via API", {
+    logger.info("Starting sign-up process", {
       category: "auth",
       data: { email: credentials.email },
     });
     try {
-      // Ensure username is not part of the credentials sent to the API
-      const { email, password, name, phone } = credentials;
-      const apiCredentials = { email, password, name, phone };
+      // Create the user account
+      const newUser = await account.create(
+        "unique()",
+        credentials.email,
+        credentials.password,
+        credentials.name
+      );
 
-      // Use the VITE_BEESIDES_API_URL env variable or fallback to the proxy
-      const apiBase = "/api"; // This uses the Vite proxy
-
-      const response = await fetch(`${apiBase}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiCredentials),
-        credentials: "include", // Include cookies for session management
+      logger.info("User account created successfully", {
+        category: "auth",
+        data: { userId: newUser.$id },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage;
+      // Automatically sign in the user after successful registration
+      try {
+        await account.createEmailSession(credentials.email, credentials.password);
+        
+        // Store credentials for recovery (encrypt in production)
+        localStorage.setItem('auth_email', credentials.email);
+        localStorage.setItem('auth_password', credentials.password);
+        
+        logger.info("Email session created after registration", {
+          category: "auth",
+          data: { userId: newUser.$id },
+        });
+
+        // Get the user account to ensure we have the latest data
+        const userAccount = await account.get();
+        const authUser = mapAppwriteUserToAuthUser(userAccount);
+
+        // Create a user profile in the database
         try {
-          const errorData = JSON.parse(errorText);
-          errorMessage =
-            errorData.message || `Sign up failed via API (${response.status})`;
-        } catch (e) {
-          errorMessage = `Sign up failed: ${response.status} - ${
-            errorText || "Unknown error"
-          }`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      // Log successful API response
-      console.log("User registered successfully via API");
-      const responseData = await response.json();
-      console.log("Registration response:", responseData);
-
-      // Set flags to indicate this is a new user that needs onboarding
-      sessionStorage.setItem("needs_onboarding", "true");
-      sessionStorage.setItem("registration_complete", "true");
-
-      // If we have a session from the API, use it to create a session with Appwrite
-      if (responseData.session && responseData.user) {
-        try {
-          logger.info("User registered via API, attempting login to sync Appwrite SDK", { 
-            category: "auth", 
-            data: { email: credentials.email } 
+          await createUserProfile({
+            userId: authUser.id,
+            name: authUser.name || authUser.email.split('@')[0],
+            email: authUser.email,
+            phone: credentials.phone
           });
           
-          // Instead of trying to get the account immediately, we need to sign in first
-          // We'll use the signIn function which we know works
-          logger.info("Attempting user sign in via API", {
-            category: "auth",
-            data: { email: credentials.email }
-          });
-          
-          // Create an auth user object from the API response
-          const authUser = {
-            id: responseData.user.$id,
-            email: responseData.user.email,
-            name: responseData.user.name,
-            phone: responseData.user.phone || undefined,
-            username: responseData.user.name,
-            created_at: responseData.user.$createdAt,
-          };
-          
-          setCurrentUser(authUser);
-
-          // Create user profile in the database
-          try {
-            logger.info("Creating user profile in database", {
-              category: "auth",
-              data: { userId: authUser.id },
-            });
-            
-            await createUserProfile({
-              userId: authUser.id,
-              name: authUser.name || authUser.email.split('@')[0],
-              email: authUser.email
-            });
-            
-            logger.info("User profile created successfully", {
-              category: "auth",
-              data: { userId: authUser.id },
-            });
-          } catch (profileError) {
-            logger.error("Failed to create user profile", {
-              category: "auth",
-              data: {
-                error: profileError instanceof Error ? profileError.message : String(profileError),
-                userId: authUser.id
-              },
-            });
-            // Continue even if profile creation fails, we can try again later
-          }
-
-          logger.info("User authenticated successfully after registration", {
+          logger.info("User profile created successfully", {
             category: "auth",
             data: { userId: authUser.id },
           });
-
-          // Return the authUser instead of navigating directly
-          // This allows the Register component to handle navigation while maintaining state
-          setLoading(false);
-          return authUser;
-        } catch (sessionError) {
-          logger.error("Failed to create Appwrite session after registration", {
+        } catch (profileError) {
+          logger.error("Failed to create user profile", {
             category: "auth",
             data: {
-              error: sessionError instanceof Error ? sessionError.message : String(sessionError),
+              error: profileError instanceof Error ? profileError.message : String(profileError),
+              userId: authUser.id
             },
           });
-          // Fall back to regular sign in
+          // Continue even if profile creation fails
         }
-      }
 
-      logger.info(
-        "User registered via API, attempting login to sync Appwrite SDK",
-        { category: "auth", data: { email: credentials.email } }
-      );
-      return await signIn({
-        email: credentials.email,
-        password: credentials.password,
-        isNewUser: true, // Pass flag to indicate this is a new registration
-      });
+        // Set the current user
+        setCurrentUser(authUser);
+        return authUser;
+      } catch (sessionError) {
+        logger.error("Failed to create session after registration", {
+          category: "auth",
+          data: {
+            error: sessionError instanceof Error ? sessionError.message : String(sessionError),
+            userId: newUser.$id
+          },
+        });
+        
+        // Even if session creation fails, we can still return the user
+        const authUser: AuthUser = {
+          id: newUser.$id,
+          email: newUser.email,
+          name: newUser.name,
+          username: newUser.name,
+          created_at: newUser.$createdAt,
+        };
+        
+        setCurrentUser(authUser);
+        return authUser;
+      }
     } catch (error: unknown) {
-      logger.error("Sign up failed", {
+      logger.error("Sign-up failed", {
         category: "auth",
-        data: { error: error instanceof Error ? error.message : String(error) },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          email: credentials.email
+        },
       });
+      
       setCurrentUser(null);
+      throw new Error("Sign-up failed");
+    } finally {
       setLoading(false);
-      if (error instanceof Error) throw error;
-      throw new Error(String(error));
     }
   };
 
@@ -279,195 +239,119 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     credentials: SignInCredentials
   ): Promise<AuthUser | null> => {
     setLoading(true);
-    logger.info("Attempting user sign in via API", {
+    logger.info("Starting sign-in process", {
       category: "auth",
       data: { email: credentials.email },
     });
     try {
-      // Use the same apiBase as for registration
-      const apiBase = "/api"; // This uses the Vite proxy
-
-      console.log(
-        `Attempting to login via ${apiBase}/auth/login with email: ${credentials.email}`
-      );
-
-      const response = await fetch(`${apiBase}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials),
-        credentials: "include", // Include cookies for session management
+      // Create an email session
+      await account.createEmailSession(credentials.email, credentials.password);
+      
+      // Store credentials for recovery (encrypt in production)
+      localStorage.setItem('auth_email', credentials.email);
+      localStorage.setItem('auth_password', credentials.password);
+      
+      logger.info("Email session created", {
+        category: "auth",
+        data: { email: credentials.email },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage;
+      // Get the user account
+      const userAccount = await account.get();
+      const authUser = mapAppwriteUserToAuthUser(userAccount);
+
+      // Check if this is a new user (coming from registration)
+      if (credentials.isNewUser) {
+        // Create a user profile in the database if it doesn't exist
         try {
-          const errorData = JSON.parse(errorText);
-          errorMessage =
-            errorData.message || `Sign in failed via API (${response.status})`;
-        } catch (e) {
-          errorMessage = `Sign in failed: ${response.status} - ${
-            errorText || "Unknown error"
-          }`;
-        }
-        console.error("Login error response:", errorText);
-        throw new Error(errorMessage);
-      }
-
-      // Log successful login
-      console.log("Login successful via API");
-      try {
-        // Parse response JSON only once
-        const loginData = await response.json();
-        console.log("Login response data:", loginData);
-
-        // Extract user data from login response
-        const user = loginData.user;
-
-        if (!user) {
-          throw new Error("Login response did not contain user data");
-        }
-
-        // Create a session with Appwrite using the email/password to ensure SDK state is synced
-        try {
-          // Create an Appwrite session to ensure the SDK is properly authenticated
-          const session = await account.createEmailSession(
-            credentials.email,
-            credentials.password
-          );
-          
-          // Store credentials in localStorage for session recovery if needed
-          // Note: In a production app, you might want to use a more secure storage method
-          // or implement a proper token refresh mechanism
-          try {
-            localStorage.setItem('auth_email', credentials.email);
-            localStorage.setItem('auth_password', credentials.password);
-            console.log("Credentials stored for session persistence");
-          } catch (storageError) {
-            console.error("Failed to store credentials for session persistence:", storageError);
-            // Continue even if storage fails
-          }
-          
-          logger.info("Appwrite session created successfully", {
-            category: "auth",
-            data: { sessionId: session.$id },
+          await createUserProfile({
+            userId: authUser.id,
+            name: authUser.name || authUser.email.split('@')[0],
+            email: authUser.email
           });
-        } catch (sessionError) {
-          console.error("Failed to create Appwrite session:", sessionError);
-          // Continue even if session creation fails, as we still have the API response
-        }
-
-        // Create auth user from the response
-        const authUser = mapAppwriteUserToAuthUser(user);
-
-        // If this is a new user from registration, mark them for onboarding
-        if (credentials.isNewUser) {
-          sessionStorage.setItem("needs_onboarding", "true");
-          sessionStorage.setItem("registration_complete", "true");
-          console.log(
-            "New user detected, marking for onboarding flow with flags:",
-            {
-              needs_onboarding: sessionStorage.getItem("needs_onboarding"),
-              registration_complete: sessionStorage.getItem(
-                "registration_complete"
-              ),
-            }
-          );
-        }
-
-        setCurrentUser(authUser);
-
-        logger.info("User signed in via API successfully", {
-          category: "auth",
-          data: { userId: authUser.id },
-        });
-
-        setLoading(false);
-        return authUser;
-      } catch (error) {
-        console.error("Error processing login response:", error);
-
-        // Fallback to getting user from Appwrite (this may not work if the API call succeeded but Appwrite sync failed)
-        try {
-          const userAccount = await account.get();
-          const authUser = mapAppwriteUserToAuthUser(userAccount);
-          setCurrentUser(authUser);
-          logger.info("User signed in via Appwrite SDK fallback", {
+          
+          logger.info("User profile created for new user", {
             category: "auth",
             data: { userId: authUser.id },
           });
-          setLoading(false);
-          return authUser;
-        } catch (appwriteError) {
-          console.error("Appwrite fallback failed:", appwriteError);
-          throw new Error("Login succeeded but failed to get user details");
+        } catch (profileError) {
+          logger.error("Failed to create user profile for new user", {
+            category: "auth",
+            data: {
+              error: profileError instanceof Error ? profileError.message : String(profileError),
+              userId: authUser.id
+            },
+          });
+          // Continue even if profile creation fails
         }
       }
-    } catch (error: unknown) {
-      logger.error("Sign in failed", {
-        category: "auth",
-        data: { error: error instanceof Error ? error.message : String(error) },
-      });
-      setCurrentUser(null);
-      setLoading(false);
-      if (error instanceof Error) throw error;
-      throw new Error(String(error));
-    }
-  };
 
-  const signOut = async (): Promise<void> => {
-    setLoading(true);
-    logger.info("Attempting user sign out with Appwrite", { category: "auth" });
-    try {
-      // Delete all sessions to ensure complete logout
-      await account.deleteSessions();
-      
-      // Remove stored credentials if they exist
-      localStorage.removeItem('auth_email');
-      localStorage.removeItem('auth_password');
-      
-      // Clear any session storage items related to auth
-      sessionStorage.removeItem("needs_onboarding");
-      sessionStorage.removeItem("registration_complete");
-      
-      // Update state
-      setCurrentUser(null);
-      
-      logger.info("User signed out successfully", { category: "auth" });
-    } catch (error: unknown) {
-      logger.error("Sign out failed", {
+      // Set the current user
+      setCurrentUser(authUser);
+      logger.info("User signed in successfully", {
         category: "auth",
-        data: { error: error instanceof Error ? error.message : String(error) },
+        data: { userId: authUser.id },
       });
-      // Still clear user state even if API call fails
-      setCurrentUser(null);
+      return authUser;
+    } catch (error: unknown) {
+      logger.error("Sign-in failed", {
+        category: "auth",
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          email: credentials.email
+        },
+      });
       
-      // Still try to remove stored data
-      try {
-        localStorage.removeItem('auth_email');
-        localStorage.removeItem('auth_password');
-        sessionStorage.removeItem("needs_onboarding");
-        sessionStorage.removeItem("registration_complete");
-      } catch (cleanupError) {
-        console.error("Failed to clean up local storage during sign out:", cleanupError);
-      }
+      setCurrentUser(null);
+      throw new Error("Sign-in failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signOut = async (): Promise<void> => {
     setLoading(true);
-    logger.info("Attempting Google Sign-In with Appwrite", {
+    logger.info("Signing out user", {
+      category: "auth",
+      data: { userId: currentUser?.id },
+    });
+    try {
+      await account.deleteSession("current");
+      setCurrentUser(null);
+      localStorage.removeItem('auth_email');
+      localStorage.removeItem('auth_password');
+      logger.info("User signed out successfully", {
+        category: "auth",
+      });
+    } catch (error: unknown) {
+      logger.error("Sign-out failed", {
+        category: "auth",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+      // Even if the API call fails, we should still clear the local state
+      // to prevent UI inconsistencies
+      setCurrentUser(null);
+      localStorage.removeItem('auth_email');
+      localStorage.removeItem('auth_password');
+      throw new Error("Sign-out failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async (): Promise<void> => {
+    setLoading(true);
+    logger.info("Initiating Google Sign-In", {
       category: "auth",
     });
     try {
-      account.createOAuth2Session(
+      await account.createOAuth2Session(
         OAuthProvider.Google,
-        `${window.location.origin}/auth/callback`,
-        `${window.location.origin}/login?error=oauth_failed`,
-        []
+        window.location.origin + "/auth/callback",
+        window.location.origin + "/auth/callback/error"
       );
+      // Note: This function redirects the user, so we don't need to handle success here
+      // The redirect callback will handle setting the user
     } catch (error: unknown) {
       logger.error("Google Sign-In failed to initiate", {
         category: "auth",
